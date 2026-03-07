@@ -372,7 +372,7 @@ export default function MapView() {
                       体験内容の詳細
                     </label>
                     <textarea
-                      placeholder="感情的な表現は避け、その場所で起きた『事実』を淡々と記述してください。"
+                      placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
                       rows={4}
                       value={episodeBody}
                       onChange={(e) => setEpisodeBody(e.target.value)}

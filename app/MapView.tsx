@@ -278,9 +278,9 @@ export default function MapView() {
           center={selectedPosition}
           radius={CIRCLE_RADIUS_M}
           pathOptions={{
-            color: '#2563eb',
-            fillColor: '#3b82f6',
-            fillOpacity: 0.25,
+            color: '#404040',
+            fillColor: '#737373',
+            fillOpacity: 0.2,
             weight: 2,
           }}
         >
@@ -293,12 +293,12 @@ export default function MapView() {
                 <button
                   type="button"
                   onClick={handleOpenForm}
-                  className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                  className="w-full rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
                 >
                   ここにエピソードを書く
                 </button>
               ) : submitSuccess ? (
-                <p className="py-2 text-center text-sm font-medium text-green-600">
+                <p className="py-2 text-center text-sm font-medium text-zinc-600">
                   投稿しました!
                 </p>
               ) : (
@@ -316,7 +316,7 @@ export default function MapView() {
                         setEpisodeCategory(e.target.value)
                       }
                       disabled={isSubmitting}
-                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
                     >
                       {EPISODE_CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>
@@ -336,7 +336,7 @@ export default function MapView() {
                         setEpisodeEventDate(e.target.value)
                       }
                       disabled={isSubmitting}
-                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
                     />
                   </div>
                   <div>
@@ -349,13 +349,13 @@ export default function MapView() {
                       value={episodeBody}
                       onChange={(e) => setEpisodeBody(e.target.value)}
                       disabled={isSubmitting}
-                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={isSubmitting || !episodeBody.trim()}
-                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                   >
                     {isSubmitting ? '保存中...' : '投稿する'}
                   </button>

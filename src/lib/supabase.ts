@@ -49,3 +49,17 @@ export function getCategoryDisplayName(category: string): string {
   const found = EPISODE_CATEGORIES.find((c) => c.value === category);
   return found ? found.label : category;
 }
+
+/** 最新のエピソードを取得（サーバー・クライアント両方で利用可能） */
+export async function getLatestEpisodes(
+  limit: number
+): Promise<Episode[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('episodes')
+    .select('id, content, lat, lng, category, event_date, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data as Episode[];
+}

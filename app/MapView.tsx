@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import {
@@ -13,6 +14,12 @@ import {
 } from 'react-leaflet';
 import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 import type { Circle as CircleType } from 'leaflet';
+import {
+  Eye,
+  Ghost,
+  HelpCircle,
+  TriangleAlert,
+} from 'lucide-react';
 import {
   EPISODE_CATEGORIES,
   getCategoryDisplayName,
@@ -41,14 +48,28 @@ function formatEventDate(dateStr: string | null | undefined): string {
   return `${y}/${m}/${d}`;
 }
 
-/** 絵文字のみのマーカーアイコン（ピン形は使わない） */
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>> = {
+  '不思議な体験': HelpCircle,
+  '心霊現象': Ghost,
+  '命の危機': TriangleAlert,
+  '違和感': Eye,
+};
+
+const MARKER_ICON_COLOR = '#1a1a1a';
+const MARKER_BG = '#262626';
+const MARKER_BORDER = '#0a0a0a';
+
 function createCategoryIcon(category: string): L.DivIcon {
-  const emoji = category === 'ぞっとする話' ? '💀' : '❤️';
+  const IconComponent = CATEGORY_ICONS[category] ?? HelpCircle;
+  const svg = renderToStaticMarkup(
+    <IconComponent size={26} color={MARKER_ICON_COLOR} strokeWidth={1.8} />
+  );
+  const html = `<div style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;background:${MARKER_BG};border:2px solid ${MARKER_BORDER};border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,0.5);">${svg}</div>`;
   return L.divIcon({
     className: 'emoji-marker',
-    html: `<div style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;background:white;border:2px solid #333;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.35);font-size:28px;line-height:1;">${emoji}</div>`,
-    iconSize: [52, 52],
-    iconAnchor: [26, 26],
+    html,
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
   });
 }
 
@@ -258,15 +279,22 @@ export default function MapView() {
         >
           <Popup>
             <div className="min-w-[200px] max-w-[300px] space-y-2 text-left text-sm">
-              <p className="font-medium text-zinc-700">
-                カテゴリー: {getCategoryDisplayName(ep.category)}
+              <p className="text-zinc-700">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">怪異の種別</span>
+                <br />
+                {getCategoryDisplayName(ep.category)}
+              </p>
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                体験内容の詳細
               </p>
               <p className="whitespace-pre-wrap text-zinc-800">{ep.content}</p>
               <p className="text-zinc-600">
-                思い出の日: {formatEventDate(ep.event_date)}
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験時期</span>{' '}
+                {formatEventDate(ep.event_date)}
               </p>
-              <p className="text-zinc-500">
-                投稿日: {formatDate(ep.created_at)}
+              <p className="text-zinc-500 text-xs">
+                <span className="font-medium uppercase tracking-wider">記録日</span>{' '}
+                {formatDate(ep.created_at)}
               </p>
             </div>
           </Popup>
@@ -286,29 +314,29 @@ export default function MapView() {
         >
           <Popup>
             <div className="min-w-[180px] text-center">
-              <p className="mb-2 text-sm font-medium text-zinc-600">
-                投稿準備中
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                記録を追加
               </p>
               {!isFormOpen ? (
                 <button
                   type="button"
                   onClick={handleOpenForm}
-                  className="w-full rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+                  className="w-full border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
                 >
-                  ここにエピソードを書く
+                  体験を記録する
                 </button>
               ) : submitSuccess ? (
-                <p className="py-2 text-center text-sm font-medium text-zinc-600">
-                  投稿しました!
+                <p className="py-2 text-center text-sm text-zinc-600">
+                  記録を保存しました
                 </p>
               ) : (
                 <form
-                  className="flex flex-col gap-2"
+                  className="flex flex-col gap-3"
                   onSubmit={handleSubmit}
                 >
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-600">
-                      カテゴリー
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      怪異の種別
                     </label>
                     <select
                       value={episodeCategory}
@@ -316,7 +344,7 @@ export default function MapView() {
                         setEpisodeCategory(e.target.value)
                       }
                       disabled={isSubmitting}
-                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
+                      className="w-full border border-zinc-300 bg-white p-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
                     >
                       {EPISODE_CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>
@@ -326,8 +354,8 @@ export default function MapView() {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-600">
-                      思い出の日
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      体験時期
                     </label>
                     <input
                       type="date"
@@ -336,28 +364,28 @@ export default function MapView() {
                         setEpisodeEventDate(e.target.value)
                       }
                       disabled={isSubmitting}
-                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
+                      className="w-full border border-zinc-300 bg-white p-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-600">
-                      本文
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      体験内容の詳細
                     </label>
                     <textarea
-                      placeholder="エピソードを入力..."
-                      rows={3}
+                      placeholder="感情的な表現は避け、その場所で起きた『事実』を淡々と記述してください。"
+                      rows={4}
                       value={episodeBody}
                       onChange={(e) => setEpisodeBody(e.target.value)}
                       disabled={isSubmitting}
-                      className="w-full rounded border border-zinc-300 p-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
+                      className="w-full resize-none border border-zinc-300 bg-white p-2 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={isSubmitting || !episodeBody.trim()}
-                    className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                    className="border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                   >
-                    {isSubmitting ? '保存中...' : '投稿する'}
+                    {isSubmitting ? '保存中...' : '記録を保存する'}
                   </button>
                 </form>
               )}

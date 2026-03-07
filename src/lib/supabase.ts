@@ -40,8 +40,10 @@ export type Episode = {
 };
 
 export const EPISODE_CATEGORIES = [
-  { value: 'ぞっとする話', label: '💀 ぞっとする話' },
-  { value: '思い出話', label: '❤️ 思い出話' },
+  { value: '不思議な体験', label: '🌫️ 不思議な体験' },
+  { value: '心霊現象', label: '👻 心霊現象' },
+  { value: '命の危機', label: '⚠️ 命の危機' },
+  { value: '違和感', label: '👁️ 違和感' },
 ] as const;
 
 /** カテゴリーの値から表示用ラベル（絵文字付き）を返す */

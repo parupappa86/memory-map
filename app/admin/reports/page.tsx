@@ -2,18 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase, getCategoryDisplayName, type Episode } from '@/src/lib/supabase';
-
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? '';
-
-type ReportRow = {
-  id: string;
-  episode_id: string;
-  reason: string | null;
-  details: string | null;
-  created_at?: string;
-  episode: Episode | null;
-};
+import { getCategoryDisplayName } from '@/src/lib/supabase';
+import type { ReportRow } from '@/app/api/admin/reports/route';
 
 function contentPreview(content: string, maxLen: number): string {
   const t = content.replace(/\s+/g, ' ').trim();
@@ -22,6 +12,7 @@ function contentPreview(content: string, maxLen: number): string {
 }
 
 export default function AdminReportsPage() {
+  const [authChecked, setAuthChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -29,12 +20,44 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch('/api/admin/reports', { credentials: 'include' });
+    setLoading(false);
+    if (res.ok) {
+      const data = await res.json();
+      setList(data.list ?? []);
+      setAuthenticated(true);
+    } else {
+      setAuthenticated(false);
+    }
+    setAuthChecked(true);
+  }, []);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
   const handlePasswordSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      if (passwordInput === ADMIN_PASSWORD && ADMIN_PASSWORD) {
+      setAccessDenied(false);
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: passwordInput }),
+      });
+      if (res.ok) {
         setAuthenticated(true);
-        setAccessDenied(false);
+        setPasswordInput('');
+        setLoading(true);
+        const reportsRes = await fetch('/api/admin/reports', { credentials: 'include' });
+        setLoading(false);
+        if (reportsRes.ok) {
+          const data = await reportsRes.json();
+          setList(data.list ?? []);
+        }
       } else {
         setAccessDenied(true);
       }
@@ -42,52 +65,37 @@ export default function AdminReportsPage() {
     [passwordInput]
   );
 
-  const fetchReports = useCallback(async () => {
-    if (!supabase) return;
-    setLoading(true);
-    const { data: reportsData, error: reportsError } = await supabase
-      .from('reports')
-      .select('id, episode_id, reason, details, created_at')
-      .order('created_at', { ascending: false });
-
-    if (reportsError || !reportsData) {
-      setList([]);
-      setLoading(false);
-      return;
-    }
-
-    const episodeIds = [...new Set((reportsData as { episode_id: string }[]).map((r) => r.episode_id))];
-    let episodesMap: Record<string, Episode> = {};
-    if (episodeIds.length > 0) {
-      const { data: episodesData } = await supabase
-        .from('episodes')
-        .select('id, content, lat, lng, category, event_date, created_at')
-        .in('id', episodeIds);
-      if (episodesData) {
-        episodesMap = (episodesData as Episode[]).reduce(
-          (acc, ep) => {
-            acc[ep.id] = ep;
-            return acc;
-          },
-          {} as Record<string, Episode>
-        );
+  const handleDeleteEpisode = useCallback(
+    async (episodeId: string) => {
+      const ok = window.confirm('この投稿を削除しますか？削除すると元に戻せません。');
+      if (!ok) return;
+      setDeletingId(episodeId);
+      const res = await fetch(`/api/admin/episodes/${episodeId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      setDeletingId(null);
+      if (!res.ok) {
+        alert('削除に失敗しました。');
+        return;
       }
-    }
+      const reportsRes = await fetch('/api/admin/reports', { credentials: 'include' });
+      if (reportsRes.ok) {
+        const data = await reportsRes.json();
+        setList(data.list ?? []);
+      }
+    },
+    []
+  );
 
-    const rows: ReportRow[] = (reportsData as ReportRow[]).map((r) => ({
-      ...r,
-      episode: episodesMap[r.episode_id] ?? null,
-    }));
-    setList(rows);
-    setLoading(false);
-  }, []);
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+        <p className="text-zinc-500">確認中...</p>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (!authenticated) return;
-    fetchReports();
-  }, [authenticated, fetchReports]);
-
-  // パスワード未認証: 入力フォームのみ表示（データは取得しない）
   if (!authenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950">
@@ -126,23 +134,6 @@ export default function AdminReportsPage() {
       </div>
     );
   }
-  const handleDeleteEpisode = useCallback(
-    async (episodeId: string) => {
-      if (!supabase) return;
-      const ok = window.confirm('この投稿を削除しますか？削除すると元に戻せません。');
-      if (!ok) return;
-      setDeletingId(episodeId);
-      const { error } = await supabase.from('episodes').delete().eq('id', episodeId);
-      setDeletingId(null);
-      if (error) {
-        console.error('[Admin] 削除エラー:', error);
-        alert('削除に失敗しました。');
-        return;
-      }
-      await fetchReports();
-    },
-    [fetchReports]
-  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -198,7 +189,7 @@ export default function AdminReportsPage() {
                           </p>
                         </div>
                       ) : (
-                        <span className="text-zinc-500">（削除済み）</span>
+                        <span className="text-zinc-500">（削除済みの投稿への通報）</span>
                       )}
                     </td>
                     <td className="p-3">

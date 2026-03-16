@@ -256,6 +256,8 @@ export default function MapView() {
     string | null
   >(null);
   const [reportingEpisodeId, setReportingEpisodeId] = useState<string | null>(null);
+  const [cityName, setCityName] = useState<string | null>(null);
+  const [wardName, setWardName] = useState<string | null>(null);
   const draftMarkerRef = useRef<L.Marker | null>(null);
   const markerRefs = useRef<Record<string, L.Marker>>({});
 
@@ -297,7 +299,31 @@ export default function MapView() {
     setEpisodeBody('');
     setEpisodeCategory(EPISODE_CATEGORIES[0].value);
     setEpisodeEventDate('');
+    setCityName(null);
+    setWardName(null);
   }, []);
+
+  useEffect(() => {
+    if (!selectedPosition) return;
+    const lat = Array.isArray(selectedPosition) ? selectedPosition[0] : (selectedPosition as { lat: number; lng: number }).lat;
+    const lng = Array.isArray(selectedPosition) ? selectedPosition[1] : (selectedPosition as { lat: number; lng: number }).lng;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+        if (cancelled) return;
+        const data = await res.json();
+        if (data?.city_name != null) setCityName(data.city_name);
+        if (data?.ward_name != null) setWardName(data.ward_name);
+      } catch {
+        if (!cancelled) {
+          setCityName(null);
+          setWardName(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPosition]);
 
   const handleOpenForm = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -344,6 +370,10 @@ export default function MapView() {
           content: episodeBody.trim(),
           lat,
           lng,
+          actual_latitude: lat,
+          actual_longitude: lng,
+          city_name: cityName ?? null,
+          ward_name: wardName ?? null,
           category: episodeCategory,
           event_date: eventDate,
         })
@@ -367,6 +397,8 @@ export default function MapView() {
       episodeBody,
       episodeCategory,
       episodeEventDate,
+      cityName,
+      wardName,
     ]
   );
 
@@ -378,6 +410,8 @@ export default function MapView() {
       setEpisodeBody('');
       setEpisodeCategory(EPISODE_CATEGORIES[0].value);
       setEpisodeEventDate('');
+      setCityName(null);
+      setWardName(null);
       setSubmitSuccess(false);
     }, 1500);
     return () => clearTimeout(timer);

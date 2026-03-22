@@ -14,7 +14,11 @@ type GeocodeResult = {
   error_message?: string;
 };
 
-/** 都道府県＋市区町村まで（city_name）。町丁名は返さず ward_name は常に null（プライバシー）。失敗時は null を返し投稿は可能にする */
+/**
+ * city_name: 都道府県のみ（administrative_area_level_1）
+ * ward_name: 市区町村のみ（locality、なければ sublocality_level_1 ※区など）
+ * それより細かい住所（町名・番地等）は取得しない（プライバシー）
+ */
 export async function GET(request: NextRequest) {
   const lat = request.nextUrl.searchParams.get('lat');
   const lng = request.nextUrl.searchParams.get('lng');
@@ -48,33 +52,23 @@ export async function GET(request: NextRequest) {
 
     const components = data.results[0].address_components;
 
-    let prefecture: string | null = null;
-    let municipality: string | null = null;
+    let city_name: string | null = null;
+    let ward_name: string | null = null;
 
     for (const c of components) {
       if (c.types.includes('administrative_area_level_1')) {
-        prefecture = c.long_name || null;
+        city_name = c.long_name || null;
       }
       if (c.types.includes('locality')) {
-        municipality = c.long_name || null;
+        ward_name = c.long_name || null;
       }
     }
-    if (!municipality) {
-      const admin2 = components.find((c) => c.types.includes('administrative_area_level_2'));
-      if (admin2) municipality = admin2.long_name || null;
+    if (!ward_name) {
+      const sub1 = components.find((c) => c.types.includes('sublocality_level_1'));
+      if (sub1) ward_name = sub1.long_name || null;
     }
 
-    /** 「都道府県 ＋ 市区町村」（例：東京都中野区） */
-    let city_name: string | null = null;
-    if (prefecture && municipality) {
-      city_name = `${prefecture}${municipality}`;
-    } else if (prefecture) {
-      city_name = prefecture;
-    } else if (municipality) {
-      city_name = municipality;
-    }
-
-    return NextResponse.json({ city_name, ward_name: null });
+    return NextResponse.json({ city_name, ward_name });
   } catch (err) {
     console.error('[geocode] 逆ジオコード失敗:', err);
     return NextResponse.json({ city_name: null, ward_name: null });

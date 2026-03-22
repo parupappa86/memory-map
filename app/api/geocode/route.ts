@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ city_name: null, ward_name: null });
   }
 
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
   if (!apiKey) {
-    console.warn('[geocode] GOOGLE_MAPS_API_KEY が未設定です');
+    console.warn('[geocode] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です');
     return NextResponse.json({ city_name: null, ward_name: null });
   }
 

@@ -13,9 +13,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ lat: null, lng: null });
   }
 
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
   if (!apiKey) {
-    console.warn('[geocode/forward] GOOGLE_MAPS_API_KEY が未設定です');
+    console.warn('[geocode/forward] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です');
     return NextResponse.json({ lat: null, lng: null });
   }
 

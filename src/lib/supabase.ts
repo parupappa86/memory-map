@@ -39,6 +39,17 @@ export type Episode = {
   created_at?: string;
 };
 
+/** 地図閲覧・一覧用（正確な座標は含めない） */
+export type EpisodePublic = {
+  id: string;
+  content: string;
+  category: string;
+  event_date: string | null;
+  created_at?: string;
+  city_name: string | null;
+  ward_name: string | null;
+};
+
 export const EPISODE_CATEGORIES = [
   { value: '不思議な体験', label: '🌫️ 不思議な体験' },
   { value: '心霊現象', label: '👻 心霊現象' },
@@ -52,16 +63,16 @@ export function getCategoryDisplayName(category: string): string {
   return found ? found.label : category;
 }
 
-/** 最新のエピソードを取得（サーバー・クライアント両方で利用可能） */
+/** 最新のエピソードを取得（公開用・座標は含まない） */
 export async function getLatestEpisodes(
   limit: number
-): Promise<Episode[]> {
+): Promise<EpisodePublic[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('episodes')
-    .select('id, content, lat, lng, category, event_date, created_at')
+    .select('id, content, category, event_date, created_at, city_name, ward_name')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error || !data) return [];
-  return data as Episode[];
+  return data as EpisodePublic[];
 }

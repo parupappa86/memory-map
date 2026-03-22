@@ -40,56 +40,7 @@ body {
   font-family: var(--font-serif-jp), "Yu Mincho", "Hiragino Mincho ProN", serif;
 }
 
-/* 絵文字マーカーの外枠（Leaflet divIcon）を透明に */
-.emoji-marker {
-  background: transparent !important;
-  border: none !important;
-}
-
-/* クラスターアイコン: 黒ベース・白数字（ストイック） */
-.marker-cluster.marker-cluster-custom {
-  background-color: rgba(10, 10, 10, 0.75);
-}
-.marker-cluster.marker-cluster-custom div {
-  background-color: #0a0a0a;
-  color: #fff;
-  font-weight: 600;
-  font-size: 14px;
-}
-.marker-cluster.marker-cluster-custom span {
-  line-height: 30px;
-}
-
-/* 地図全体: 地名を読みやすく（フィルターは最小限） */
-.leaflet-container {
-  filter: saturate(0.5) contrast(1);
-}
-
-/* 怪異範囲の円: 線なし・塗りのみ・境界のない気配 */
-.episode-range-circle {
-  filter: blur(8px);
-}
-
-/* ポップアップ: 黒背景・白文字・コンパクト表示 */
-.leaflet-popup-content-wrapper {
-  background: #000000;
-  color: #ffffff;
-  border: 1px solid #333;
-}
-.leaflet-popup-content {
-  background: #000000 !important;
-  color: #ffffff;
-  font-size: 1rem;
-  line-height: 1.5;
-  margin: 8px 12px;
-}
-.leaflet-popup-tip {
-  background: #000000 !important;
-}
-.leaflet-popup-content p {
-  margin: 0 0 0.25em 0;
-  color: inherit;
-}
-.leaflet-popup-content p:last-child {
-  margin-bottom: 0;
+/* Google Maps: 地名をやや落ち着かせる（任意） */
+.gm-style {
+  filter: saturate(0.85) contrast(1);
 }

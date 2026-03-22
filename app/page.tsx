@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { getLatestEpisodes } from '@/src/lib/supabase';
-import { getLocationLabel } from '@/src/lib/geocode';
 
 const SITE_TITLE = 'みんなのぞっとする話マップ';
 const SUBTITLE = '日本全国・怪異地点録';
@@ -15,6 +14,18 @@ function contentPreview(content: string): string {
   return t.slice(0, PREVIEW_LEN) + '...';
 }
 
+function publicLocationLabel(ep: {
+  city_name: string | null;
+  ward_name: string | null;
+}): string {
+  const c = ep.city_name?.trim();
+  const w = ep.ward_name?.trim();
+  if (c && w) return `${c}${w}`;
+  if (c) return c;
+  if (w) return w;
+  return '地図で確認';
+}
+
 async function LatestEpisodesList() {
   const episodes = await getLatestEpisodes(5);
   if (episodes.length === 0) {
@@ -23,20 +34,11 @@ async function LatestEpisodesList() {
     );
   }
 
-  const items: { episode: (typeof episodes)[0]; locationLabel: string }[] = [];
-  for (let i = 0; i < episodes.length; i++) {
-    const locationLabel = await getLocationLabel(episodes[i].lat, episodes[i].lng);
-    items.push({ episode: episodes[i], locationLabel });
-    if (i < episodes.length - 1) {
-      await new Promise((r) => setTimeout(r, 1100));
-    }
-  }
-
   return (
     <ul className="space-y-2.5 border-t border-zinc-200 pt-4">
-      {items.map(({ episode, locationLabel }) => (
+      {episodes.map((episode) => (
         <li key={episode.id} className="text-lg leading-relaxed text-zinc-700">
-          【{locationLabel}】{contentPreview(episode.content)}
+          【{publicLocationLabel(episode)}】{contentPreview(episode.content)}
         </li>
       ))}
     </ul>

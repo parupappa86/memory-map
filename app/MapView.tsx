@@ -1,37 +1,25 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet.markercluster/dist/MarkerCluster.css';
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
-import L from 'leaflet';
 import {
-  MapContainer,
+  APIProvider,
+  InfoWindow,
+  Map,
   Marker,
-  Popup,
-  TileLayer,
   useMap,
-  useMapEvents,
-} from 'react-leaflet';
-import MarkerClusterGroup from 'react-leaflet-cluster';
-import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
-import {
-  Eye,
-  Ghost,
-  HelpCircle,
-  TriangleAlert,
-} from 'lucide-react';
+} from '@vis.gl/react-google-maps';
 import {
   EPISODE_CATEGORIES,
   getCategoryDisplayName,
   getSupabaseError,
   supabase,
-  type Episode,
+  type EpisodePublic,
 } from '@/src/lib/supabase';
 
-const SHINJUKU_CENTER: LatLngExpression = [35.6896, 139.6917];
+const SHINJUKU_CENTER = { lat: 35.6896, lng: 139.6917 };
 const FLY_TO_ZOOM = 16;
+
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 
 /** 通報理由の選択肢 */
 const REPORT_REASONS = [
@@ -42,7 +30,22 @@ const REPORT_REASONS = [
   { value: 'その他（削除依頼）', label: 'その他（削除依頼）' },
 ] as const;
 
-/** 通報フォーム（入力 state を内包し、親の再レンダーでフォーカスが外れないようにする） */
+const MARKER_BG = '#262626';
+const MARKER_BORDER = '#0a0a0a';
+
+function categoryMarkerIconUrl(category: string): string {
+  const fill: Record<string, string> = {
+    '不思議な体験': '#3f3f46',
+    '心霊現象': '#52525b',
+    '命の危機': '#991b1b',
+    '違和感': '#404040',
+  };
+  const c = fill[category] ?? MARKER_BG;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><circle cx="24" cy="24" r="20" fill="${c}" stroke="${MARKER_BORDER}" stroke-width="2"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/** 通報フォーム（入力 state を内包） */
 function ReportForm({
   episodeId,
   onSuccess,
@@ -94,10 +97,7 @@ function ReportForm({
   }
 
   return (
-    <form
-      className="space-y-1.5 pt-1.5"
-      onSubmit={handleSubmit}
-    >
+    <form className="space-y-1.5 pt-1.5" onSubmit={handleSubmit}>
       <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
         通報理由
       </label>
@@ -169,98 +169,37 @@ function formatEventDate(dateStr: string | null | undefined): string {
   return `${y}/${m}/${d}`;
 }
 
-const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>> = {
-  '不思議な体験': HelpCircle,
-  '心霊現象': Ghost,
-  '命の危機': TriangleAlert,
-  '違和感': Eye,
-};
-
-const MARKER_ICON_COLOR = '#1a1a1a';
-const MARKER_BG = '#262626';
-const MARKER_BORDER = '#0a0a0a';
-
-function createCategoryIcon(category: string): L.DivIcon {
-  const IconComponent = CATEGORY_ICONS[category] ?? HelpCircle;
-  const svg = renderToStaticMarkup(
-    <IconComponent size={26} color={MARKER_ICON_COLOR} strokeWidth={1.8} />
-  );
-  const html = `<div style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;background:${MARKER_BG};border:2px solid ${MARKER_BORDER};border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,0.5);">${svg}</div>`;
-  return L.divIcon({
-    className: 'emoji-marker',
-    html,
-    iconSize: [48, 48],
-    iconAnchor: [24, 24],
-  });
-}
-
-/** クラスターアイコン: 黒ベース・白数字 */
-function clusterIconCreate(cluster: { getChildCount: () => number }): L.DivIcon {
-  const count = cluster.getChildCount();
-  const sizeClass =
-    count < 10 ? 'small' : count < 100 ? 'medium' : 'large';
-  return L.divIcon({
-    html: `<div><span>${count}</span></div>`,
-    className: `marker-cluster marker-cluster-${sizeClass} marker-cluster-custom`,
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
-  });
-}
-
-// Leaflet のデフォルトアイコンを Next.js で正しく表示するための設定
-if (typeof window !== 'undefined') {
-  delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
-    ._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl:
-      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-    iconUrl:
-      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-    shadowUrl:
-      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-  });
-}
-
-function ClickHandler({
-  onSelectPosition,
-}: {
-  onSelectPosition: (latlng: LatLngExpression) => void;
-}) {
-  useMapEvents({
-    click(e: LeafletMouseEvent) {
-      onSelectPosition(e.latlng);
-    },
-  });
-  return null;
-}
-
 function contentPreview(content: string, maxLen: number): string {
   const t = content.replace(/\s+/g, ' ').trim();
   if (t.length <= maxLen) return t;
   return t.slice(0, maxLen) + '...';
 }
 
+function addressKey(ep: EpisodePublic): string | null {
+  if (!ep.city_name?.trim() || !ep.ward_name?.trim()) return null;
+  return `${ep.city_name.trim()}\t${ep.ward_name.trim()}`;
+}
+
 export default function MapView() {
-  const [selectedPosition, setSelectedPosition] =
-    useState<LatLngExpression | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [episodeBody, setEpisodeBody] = useState('');
-  const [episodeCategory, setEpisodeCategory] = useState<string>(
-    EPISODE_CATEGORIES[0].value
-  );
+  const [episodeCategory, setEpisodeCategory] = useState<string>(EPISODE_CATEGORIES[0].value);
   const [episodeEventDate, setEpisodeEventDate] = useState('');
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [episodes, setEpisodes] = useState<EpisodePublic[]>([]);
+  const [episodePositions, setEpisodePositions] = useState<Record<string, google.maps.LatLngLiteral>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [selectedEpisodeIdForFly, setSelectedEpisodeIdForFly] = useState<
-    string | null
-  >(null);
+  const [selectedEpisodeIdForFly, setSelectedEpisodeIdForFly] = useState<string | null>(null);
   const [reportingEpisodeId, setReportingEpisodeId] = useState<string | null>(null);
   const [cityName, setCityName] = useState<string | null>(null);
   const [wardName, setWardName] = useState<string | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const draftMarkerRef = useRef<L.Marker | null>(null);
-  const markerRefs = useRef<Record<string, L.Marker>>({});
+  const [openInfoEpisodeId, setOpenInfoEpisodeId] = useState<string | null>(null);
+  const [draftInfoOpen, setDraftInfoOpen] = useState(true);
+  const posCacheRef = useRef<globalThis.Map<string, google.maps.LatLngLiteral>>(
+    new globalThis.Map()
+  );
 
   useEffect(() => {
     if (!supabase) return;
@@ -268,34 +207,70 @@ export default function MapView() {
     async function fetchEpisodes() {
       const { data, error } = await client
         .from('episodes')
-        .select('id, content, lat, lng, category, event_date, created_at')
+        .select('id, content, category, event_date, created_at, city_name, ward_name')
         .order('created_at', { ascending: false });
-      if (!error && data) setEpisodes(data as Episode[]);
+      if (!error && data) setEpisodes(data as EpisodePublic[]);
     }
     fetchEpisodes();
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, google.maps.LatLngLiteral> = {};
+      const cache = posCacheRef.current;
+      for (const ep of episodes) {
+        const key = addressKey(ep);
+        if (!key) continue;
+        if (cache.has(key)) {
+          next[ep.id] = cache.get(key)!;
+          continue;
+        }
+        const q = `${ep.city_name!.trim()}${ep.ward_name!.trim()}`;
+        try {
+          const res = await fetch(`/api/geocode/forward?q=${encodeURIComponent(q)}`);
+          const data = (await res.json()) as { lat: number | null; lng: number | null };
+          if (cancelled) return;
+          if (data.lat != null && data.lng != null) {
+            const pos = { lat: data.lat, lng: data.lng };
+            cache.set(key, pos);
+            next[ep.id] = pos;
+          }
+        } catch {
+          /* スキップ */
+        }
+      }
+      if (!cancelled) {
+        setEpisodePositions((prev) => {
+          const merged = { ...prev, ...next };
+          return merged;
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [episodes]);
+
+  useEffect(() => {
     if (!selectedPosition) return;
-    const timer = setTimeout(() => {
-      const marker = draftMarkerRef.current;
-      if (marker && typeof marker.openPopup === 'function') marker.openPopup();
-    }, 0);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setDraftInfoOpen(true), 0);
+    return () => clearTimeout(t);
   }, [selectedPosition]);
 
   useEffect(() => {
     if (!selectedEpisodeIdForFly) return;
     const t = setTimeout(() => {
-      const marker = markerRefs.current[selectedEpisodeIdForFly];
-      if (marker) marker.openPopup();
+      setOpenInfoEpisodeId(selectedEpisodeIdForFly);
       setSelectedEpisodeIdForFly(null);
-    }, 900);
+    }, 400);
     return () => clearTimeout(t);
   }, [selectedEpisodeIdForFly]);
 
-  const handleSelectPosition = useCallback((latlng: LatLngExpression) => {
-    setSelectedPosition(latlng);
+  const handleMapClick = useCallback((e: { detail: { latLng: google.maps.LatLngLiteral | null } }) => {
+    const ll = e.detail.latLng;
+    if (!ll) return;
+    setSelectedPosition(ll);
     setIsFormOpen(false);
     setEpisodeBody('');
     setEpisodeCategory(EPISODE_CATEGORIES[0].value);
@@ -303,6 +278,8 @@ export default function MapView() {
     setCityName(null);
     setWardName(null);
     setIsGeocoding(true);
+    setDraftInfoOpen(true);
+    setOpenInfoEpisodeId(null);
   }, []);
 
   useEffect(() => {
@@ -310,8 +287,7 @@ export default function MapView() {
       setIsGeocoding(false);
       return;
     }
-    const lat = Array.isArray(selectedPosition) ? selectedPosition[0] : (selectedPosition as { lat: number; lng: number }).lat;
-    const lng = Array.isArray(selectedPosition) ? selectedPosition[1] : (selectedPosition as { lat: number; lng: number }).lng;
+    const { lat, lng } = selectedPosition;
     let cancelled = false;
     setIsGeocoding(true);
     (async () => {
@@ -344,13 +320,8 @@ export default function MapView() {
     setIsFormOpen(true);
   }, []);
 
-  const handleListSelectEpisode = useCallback((ep: Episode) => {
+  const handleListSelectEpisode = useCallback((ep: EpisodePublic) => {
     setSelectedEpisodeIdForFly(ep.id);
-  }, []);
-
-  const registerMarkerRef = useCallback((id: string, el: L.Marker | null) => {
-    if (el) markerRefs.current[id] = el;
-    else delete markerRefs.current[id];
   }, []);
 
   const handleOpenReport = useCallback((episodeId: string, e: React.MouseEvent) => {
@@ -367,13 +338,7 @@ export default function MapView() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!selectedPosition || episodeBody.trim() === '' || isGeocoding) return;
-      const lat = Array.isArray(selectedPosition)
-        ? selectedPosition[0]
-        : (selectedPosition as { lat: number; lng: number }).lat;
-      const lng = Array.isArray(selectedPosition)
-        ? selectedPosition[1]
-        : (selectedPosition as { lat: number; lng: number }).lng;
-
+      const { lat, lng } = selectedPosition;
       if (!supabase) return;
       setIsSubmitting(true);
       const eventDate = episodeEventDate.trim() || null;
@@ -390,30 +355,21 @@ export default function MapView() {
           category: episodeCategory,
           event_date: eventDate,
         })
-        .select('id, content, lat, lng, category, event_date, created_at')
+        .select('id, content, category, event_date, created_at, city_name, ward_name')
         .single();
 
       setIsSubmitting(false);
       if (error) {
         const detail = `code: ${error.code}\nmessage: ${error.message}`;
         console.error('[MapView] Supabase 投稿エラー:', error);
-        console.error('[MapView] error.code:', error.code, 'error.message:', error.message);
-        alert(`投稿に失敗しました（401 Unauthorized の原因確認用）\n\n${detail}`);
+        alert(`投稿に失敗しました\n\n${detail}`);
         return;
       }
 
-      setEpisodes((prev) => [data as Episode, ...prev]);
+      setEpisodes((prev) => [data as EpisodePublic, ...prev]);
       setSubmitSuccess(true);
     },
-    [
-      selectedPosition,
-      episodeBody,
-      episodeCategory,
-      episodeEventDate,
-      cityName,
-      wardName,
-      isGeocoding,
-    ]
+    [selectedPosition, episodeBody, episodeCategory, episodeEventDate, cityName, wardName, isGeocoding]
   );
 
   useEffect(() => {
@@ -436,14 +392,20 @@ export default function MapView() {
   if (supabaseError) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-50 p-6">
+        <p className="max-w-md text-center font-medium text-red-600">Supabase の接続設定に問題があります</p>
+        <p className="max-w-md text-center text-sm text-zinc-600">{supabaseError}</p>
+      </div>
+    );
+  }
+
+  if (!GOOGLE_MAPS_API_KEY) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-50 p-6">
         <p className="max-w-md text-center font-medium text-red-600">
-          Supabase の接続設定に問題があります
+          Google Maps の API キーが設定されていません
         </p>
         <p className="max-w-md text-center text-sm text-zinc-600">
-          {supabaseError}
-        </p>
-        <p className="max-w-md text-center text-xs text-zinc-500">
-          .env.local を編集した場合は、開発サーバー（npm run dev）を再起動してください。
+          .env.local に NEXT_PUBLIC_GOOGLE_MAPS_API_KEY を設定してください。
         </p>
       </div>
     );
@@ -451,247 +413,246 @@ export default function MapView() {
 
   return (
     <div className="relative h-full w-full">
-      <MapContainer
-        center={SHINJUKU_CENTER}
-        zoom={12}
-        className="h-full w-full"
-        style={{ height: '100%', width: '100%' }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
-          url="https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"
-        />
-        <ClickHandler onSelectPosition={handleSelectPosition} />
-        <MarkerClusterGroup
-          iconCreateFunction={clusterIconCreate}
-          spiderfyOnMaxZoom
-          maxClusterRadius={60}
-          chunkedLoading
+      <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+        <Map
+          defaultCenter={SHINJUKU_CENTER}
+          defaultZoom={12}
+          className="h-full w-full"
+          gestureHandling="greedy"
+          mapTypeControl={false}
+          streetViewControl={false}
+          fullscreenControl={false}
+          onClick={handleMapClick}
+          style={{ width: '100%', height: '100%' }}
         >
-          {episodes.map((ep) => (
-            <Marker
-              key={ep.id}
-              position={[ep.lat, ep.lng]}
-              icon={createCategoryIcon(ep.category)}
-              ref={(el) => registerMarkerRef(ep.id, el)}
-              eventHandlers={{
-                click: () => {
+          {episodes.map((ep) => {
+            const pos = episodePositions[ep.id];
+            if (!pos) return null;
+            return (
+              <React.Fragment key={ep.id}>
+                <Marker
+                  position={pos}
+                  icon={{ url: categoryMarkerIconUrl(ep.category) }}
+                  onClick={() => {
+                    setSelectedPosition(null);
+                    setIsFormOpen(false);
+                    setEpisodeBody('');
+                    setReportingEpisodeId(null);
+                    setOpenInfoEpisodeId(ep.id);
+                  }}
+                />
+                {openInfoEpisodeId === ep.id && (
+                  <InfoWindow position={pos} onCloseClick={() => setOpenInfoEpisodeId(null)}>
+                    <div className="min-w-[260px] max-w-[360px] space-y-1.5 text-left text-black">
+                      <p>
+                        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">怪異の種別</span>
+                        <br />
+                        <span className="text-base font-serif">{getCategoryDisplayName(ep.category)}</span>
+                      </p>
+                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験内容の詳細</p>
+                      <p className="whitespace-pre-wrap text-base font-serif">{ep.content}</p>
+                      <p className="text-base text-zinc-700">
+                        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験時期</span>{' '}
+                        {formatEventDate(ep.event_date)}
+                      </p>
+                      <p className="text-base text-zinc-600">
+                        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">記録日</span>{' '}
+                        {formatDate(ep.created_at)}
+                      </p>
+                      {ep.city_name && ep.ward_name && (
+                        <p className="text-xs text-zinc-500">
+                          表示位置: {ep.city_name}
+                          {ep.ward_name}
+                          （市区町村の代表地点）
+                        </p>
+                      )}
+                      {reportingEpisodeId !== ep.id ? (
+                        <p className="pt-1.5 text-xs text-zinc-500">
+                          <button
+                            type="button"
+                            onClick={(ev) => handleOpenReport(ep.id, ev)}
+                            className="underline hover:text-zinc-700"
+                          >
+                            この投稿を通報・削除依頼する
+                          </button>
+                        </p>
+                      ) : (
+                        <ReportForm
+                          episodeId={ep.id}
+                          onSuccess={handleCloseReport}
+                          onCancel={handleCloseReport}
+                        />
+                      )}
+                    </div>
+                  </InfoWindow>
+                )}
+              </React.Fragment>
+            );
+          })}
+
+          {selectedPosition && (
+            <>
+              <Marker
+                position={selectedPosition}
+                onClick={() => {
                   setSelectedPosition(null);
                   setIsFormOpen(false);
                   setEpisodeBody('');
-                  setReportingEpisodeId(null);
-                },
-              }}
-            >
-              <Popup className="popup-dark">
-                <div className="min-w-[260px] max-w-[360px] space-y-1.5 text-left">
-                  <p>
-                    <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">怪異の種別</span>
-                    <br />
-                    <span className="text-base font-serif text-white">{getCategoryDisplayName(ep.category)}</span>
-                  </p>
-                  <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">
-                    体験内容の詳細
-                  </p>
-                  <p className="whitespace-pre-wrap text-base font-serif text-white">{ep.content}</p>
-                  <p className="text-base text-zinc-300">
-                    <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">体験時期</span>{' '}
-                    {formatEventDate(ep.event_date)}
-                  </p>
-                  <p className="text-base text-zinc-400">
-                    <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">記録日</span>{' '}
-                    {formatDate(ep.created_at)}
-                  </p>
-                  {reportingEpisodeId !== ep.id ? (
-                    <p className="pt-1.5 text-xs text-zinc-500">
+                }}
+              />
+              {draftInfoOpen && (
+                <InfoWindow
+                  position={selectedPosition}
+                  onCloseClick={() => setDraftInfoOpen(false)}
+                >
+                  <div className="min-w-[240px] text-center text-black">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">記録を追加</p>
+                    {!isFormOpen ? (
                       <button
                         type="button"
-                        onClick={(ev) => handleOpenReport(ep.id, ev)}
-                        className="underline hover:text-zinc-400"
+                        onClick={handleOpenForm}
+                        className="w-full border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white transition-colors hover:bg-zinc-700"
                       >
-                        この投稿を通報・削除依頼する
+                        体験を記録する
                       </button>
-                    </p>
-                  ) : (
-                    <ReportForm
-                      episodeId={ep.id}
-                      onSuccess={handleCloseReport}
-                      onCancel={handleCloseReport}
-                    />
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MarkerClusterGroup>
-        {selectedPosition && (
-          <Marker
-            position={
-              Array.isArray(selectedPosition)
-                ? selectedPosition
-                : [selectedPosition.lat, selectedPosition.lng]
-            }
-            ref={draftMarkerRef}
-            eventHandlers={{
-              click: () => {
-                setSelectedPosition(null);
-                setIsFormOpen(false);
-                setEpisodeBody('');
-              },
-            }}
-          >
-            <Popup className="popup-dark">
-              <div className="min-w-[240px] text-center">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  記録を追加
-                </p>
-                {!isFormOpen ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenForm}
-                    className="w-full border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white transition-colors hover:bg-zinc-700"
-                  >
-                    体験を記録する
-                  </button>
-                ) : submitSuccess ? (
-                  <p className="py-1.5 text-center text-base text-zinc-300">
-                    記録を保存しました
-                  </p>
-                ) : (
-                  <form
-                    className="flex flex-col gap-2"
-                    onSubmit={handleSubmit}
-                  >
-                    <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                        怪異の種別
-                      </label>
-                      <select
-                        value={episodeCategory}
-                        onChange={(e) =>
-                          setEpisodeCategory(e.target.value)
-                        }
-                        disabled={isSubmitting}
-                        className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
-                      >
-                        {EPISODE_CATEGORIES.map((c) => (
-                          <option key={c.value} value={c.value}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                        体験時期
-                      </label>
-                      <input
-                        type="date"
-                        value={episodeEventDate}
-                        onChange={(e) =>
-                          setEpisodeEventDate(e.target.value)
-                        }
-                        disabled={isSubmitting}
-                        className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
-                      />
-                    </div>
-                    <p className="text-left text-xs leading-relaxed text-zinc-400">
-                      {isGeocoding ? (
-                        <>📍 地点を解析中...</>
-                      ) : cityName || wardName ? (
-                        <>
-                          📍 {[cityName, wardName].filter(Boolean).join(' ')} として記録されます
-                        </>
-                      ) : (
-                        <>📍 地点名が特定できませんでした</>
-                      )}
-                    </p>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                        体験内容の詳細
-                      </label>
-                      <textarea
-                        placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
-                        rows={4}
-                        value={episodeBody}
-                        onChange={(e) => setEpisodeBody(e.target.value)}
-                        disabled={isSubmitting}
-                        spellCheck={false}
-                        autoComplete="off"
-                        className="min-h-[6rem] w-full resize-none border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50 leading-normal"
-                        style={{ lineHeight: 1.5 }}
-                      />
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-zinc-500">
-                      【禁止事項】個人宅の特定、特定の施設・個人への誹謗中傷、プライバシーを侵害する内容の投稿。違反した場合は予告なく削除します。
-                    </p>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
-                      className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
-                    >
-                      {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
-                    </button>
-                  </form>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        )}
+                    ) : submitSuccess ? (
+                      <p className="py-1.5 text-center text-base text-zinc-700">記録を保存しました</p>
+                    ) : (
+                      <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                            怪異の種別
+                          </label>
+                          <select
+                            value={episodeCategory}
+                            onChange={(e) => setEpisodeCategory(e.target.value)}
+                            disabled={isSubmitting}
+                            className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
+                          >
+                            {EPISODE_CATEGORIES.map((c) => (
+                              <option key={c.value} value={c.value}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                            体験時期
+                          </label>
+                          <input
+                            type="date"
+                            value={episodeEventDate}
+                            onChange={(e) => setEpisodeEventDate(e.target.value)}
+                            disabled={isSubmitting}
+                            className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
+                          />
+                        </div>
+                        <p className="text-left text-xs leading-relaxed text-zinc-600">
+                          {isGeocoding ? (
+                            <>📍 地点を解析中...</>
+                          ) : cityName || wardName ? (
+                            <>📍 {[cityName, wardName].filter(Boolean).join(' ')} として記録されます</>
+                          ) : (
+                            <>📍 地点名が特定できませんでした</>
+                          )}
+                        </p>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                            体験内容の詳細
+                          </label>
+                          <textarea
+                            placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
+                            rows={4}
+                            value={episodeBody}
+                            onChange={(e) => setEpisodeBody(e.target.value)}
+                            disabled={isSubmitting}
+                            spellCheck={false}
+                            autoComplete="off"
+                            className="min-h-[6rem] w-full resize-none border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50 leading-normal"
+                            style={{ lineHeight: 1.5 }}
+                          />
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-zinc-500">
+                          【禁止事項】個人宅の特定、特定の施設・個人への誹謗中傷、プライバシーを侵害する内容の投稿。違反した場合は予告なく削除します。
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
+                          className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+                        >
+                          {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </InfoWindow>
+              )}
+            </>
+          )}
+        </Map>
         <BoundsListPanelWrapper
           episodes={episodes}
+          episodePositions={episodePositions}
           onSelectEpisode={handleListSelectEpisode}
           selectedEpisodeIdForFly={selectedEpisodeIdForFly}
         />
-      </MapContainer>
+      </APIProvider>
     </div>
   );
 }
 
 function BoundsListPanelWrapper({
   episodes,
+  episodePositions,
   onSelectEpisode,
   selectedEpisodeIdForFly,
 }: {
-  episodes: Episode[];
-  onSelectEpisode: (ep: Episode) => void;
+  episodes: EpisodePublic[];
+  episodePositions: Record<string, google.maps.LatLngLiteral>;
+  onSelectEpisode: (ep: EpisodePublic) => void;
   selectedEpisodeIdForFly: string | null;
 }) {
   const map = useMap();
-  const [boundsEpisodes, setBoundsEpisodes] = useState<Episode[]>([]);
+  const [boundsEpisodes, setBoundsEpisodes] = useState<EpisodePublic[]>([]);
 
   useEffect(() => {
+    if (!map) return;
     const updateBounds = () => {
       const b = map.getBounds();
-      const inBounds = episodes.filter(
-        (ep) => b.contains([ep.lat, ep.lng])
-      );
+      if (!b) return;
+      const inBounds = episodes.filter((ep) => {
+        const p = episodePositions[ep.id];
+        if (!p) return false;
+        return b.contains(p);
+      });
       setBoundsEpisodes(inBounds);
     };
     updateBounds();
-    map.on('moveend', updateBounds);
+    const listener = map.addListener('idle', updateBounds);
     return () => {
-      map.off('moveend', updateBounds);
+      if (typeof google !== 'undefined') {
+        google.maps.event.removeListener(listener);
+      }
     };
-  }, [map, episodes]);
+  }, [map, episodes, episodePositions]);
 
   const handleClick = useCallback(
-    (ep: Episode) => {
-      map.flyTo([ep.lat, ep.lng], FLY_TO_ZOOM);
+    (ep: EpisodePublic) => {
+      const p = episodePositions[ep.id];
+      if (!p || !map) return;
+      map.panTo(p);
+      map.setZoom(FLY_TO_ZOOM);
       onSelectEpisode(ep);
     },
-    [map, onSelectEpisode]
+    [map, onSelectEpisode, episodePositions]
   );
 
   return (
     <div className="absolute right-0 top-0 z-[1000] flex h-full w-full max-w-[320px] flex-col border-l border-zinc-200 bg-white/95 shadow-lg backdrop-blur sm:w-[280px]">
       <div className="shrink-0 border-b border-zinc-200 p-3">
-        <p className="text-xs uppercase tracking-wider text-zinc-400">
-          検索・フィルタ（準備中）
-        </p>
-        <p className="mt-1 text-[11px] text-zinc-400">
-          地名検索やカテゴリー絞り込みは今後追加予定です。
-        </p>
+        <p className="text-xs uppercase tracking-wider text-zinc-400">検索・フィルタ（準備中）</p>
+        <p className="mt-1 text-[11px] text-zinc-400">地名検索やカテゴリー絞り込みは今後追加予定です。</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <p className="mb-2 text-sm font-medium uppercase tracking-wider text-zinc-600">
@@ -709,21 +670,15 @@ function BoundsListPanelWrapper({
                     : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50'
                 }`}
               >
-                <span className="font-medium text-zinc-600">
-                  {getCategoryDisplayName(ep.category)}
-                </span>
+                <span className="font-medium text-zinc-600">{getCategoryDisplayName(ep.category)}</span>
                 <br />
-                <span className="text-zinc-900 font-medium">
-                  {contentPreview(ep.content, 28)}
-                </span>
+                <span className="font-medium text-zinc-900">{contentPreview(ep.content, 28)}</span>
               </button>
             </li>
           ))}
         </ul>
         {boundsEpisodes.length === 0 && (
-          <p className="py-4 text-center text-base text-zinc-500">
-            この範囲には記録がありません
-          </p>
+          <p className="py-4 text-center text-base text-zinc-500">この範囲には記録がありません</p>
         )}
       </div>
     </div>

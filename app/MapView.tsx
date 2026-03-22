@@ -258,6 +258,7 @@ export default function MapView() {
   const [reportingEpisodeId, setReportingEpisodeId] = useState<string | null>(null);
   const [cityName, setCityName] = useState<string | null>(null);
   const [wardName, setWardName] = useState<string | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const draftMarkerRef = useRef<L.Marker | null>(null);
   const markerRefs = useRef<Record<string, L.Marker>>({});
 
@@ -301,28 +302,40 @@ export default function MapView() {
     setEpisodeEventDate('');
     setCityName(null);
     setWardName(null);
+    setIsGeocoding(true);
   }, []);
 
   useEffect(() => {
-    if (!selectedPosition) return;
+    if (!selectedPosition) {
+      setIsGeocoding(false);
+      return;
+    }
     const lat = Array.isArray(selectedPosition) ? selectedPosition[0] : (selectedPosition as { lat: number; lng: number }).lat;
     const lng = Array.isArray(selectedPosition) ? selectedPosition[1] : (selectedPosition as { lat: number; lng: number }).lng;
     let cancelled = false;
+    setIsGeocoding(true);
     (async () => {
       try {
         const res = await fetch(`/api/geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
         if (cancelled) return;
-        const data = await res.json();
-        if (data?.city_name != null) setCityName(data.city_name);
-        if (data?.ward_name != null) setWardName(data.ward_name);
+        const data = (await res.json()) as { city_name?: string | null; ward_name?: string | null };
+        if (cancelled) return;
+        const nextCity = data?.city_name != null && String(data.city_name).trim() !== '' ? String(data.city_name).trim() : null;
+        const nextWard = data?.ward_name != null && String(data.ward_name).trim() !== '' ? String(data.ward_name).trim() : null;
+        setCityName(nextCity);
+        setWardName(nextWard);
       } catch {
         if (!cancelled) {
           setCityName(null);
           setWardName(null);
         }
+      } finally {
+        if (!cancelled) setIsGeocoding(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedPosition]);
 
   const handleOpenForm = useCallback((e: React.MouseEvent) => {
@@ -353,7 +366,7 @@ export default function MapView() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!selectedPosition || episodeBody.trim() === '') return;
+      if (!selectedPosition || episodeBody.trim() === '' || isGeocoding) return;
       const lat = Array.isArray(selectedPosition)
         ? selectedPosition[0]
         : (selectedPosition as { lat: number; lng: number }).lat;
@@ -399,6 +412,7 @@ export default function MapView() {
       episodeEventDate,
       cityName,
       wardName,
+      isGeocoding,
     ]
   );
 
@@ -412,6 +426,7 @@ export default function MapView() {
       setEpisodeEventDate('');
       setCityName(null);
       setWardName(null);
+      setIsGeocoding(false);
       setSubmitSuccess(false);
     }, 1500);
     return () => clearTimeout(timer);
@@ -580,6 +595,17 @@ export default function MapView() {
                         className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
                       />
                     </div>
+                    <p className="text-left text-xs leading-relaxed text-zinc-400">
+                      {isGeocoding ? (
+                        <>📍 地点を解析中...</>
+                      ) : cityName || wardName ? (
+                        <>
+                          📍 {[cityName, wardName].filter(Boolean).join(' ')} として記録されます
+                        </>
+                      ) : (
+                        <>📍 地点名が特定できませんでした</>
+                      )}
+                    </p>
                     <div>
                       <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
                         体験内容の詳細
@@ -601,10 +627,10 @@ export default function MapView() {
                     </p>
                     <button
                       type="submit"
-                      disabled={isSubmitting || !episodeBody.trim()}
+                      disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
                       className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
                     >
-                      {isSubmitting ? '保存中...' : '記録を保存する'}
+                      {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
                     </button>
                   </form>
                 )}

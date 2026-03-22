@@ -2,10 +2,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AdvancedMarker,
   APIProvider,
   InfoWindow,
   Map,
-  Marker,
+  Pin,
   useMap,
 } from '@vis.gl/react-google-maps';
 import {
@@ -33,16 +34,15 @@ const REPORT_REASONS = [
 const MARKER_BG = '#262626';
 const MARKER_BORDER = '#0a0a0a';
 
-function categoryMarkerIconUrl(category: string): string {
+function categoryPinColors(category: string): { background: string; glyphColor: string } {
   const fill: Record<string, string> = {
     '不思議な体験': '#3f3f46',
     '心霊現象': '#52525b',
     '命の危機': '#991b1b',
     '違和感': '#404040',
   };
-  const c = fill[category] ?? MARKER_BG;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><circle cx="24" cy="24" r="20" fill="${c}" stroke="${MARKER_BORDER}" stroke-width="2"/></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const background = fill[category] ?? MARKER_BG;
+  return { background, glyphColor: '#fafafa' };
 }
 
 /** 通報フォーム（入力 state を内包） */
@@ -411,10 +411,24 @@ export default function MapView() {
     );
   }
 
+  if (!process.env.NEXT_PUBLIC_MAP_ID?.trim()) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-50 p-6">
+        <p className="max-w-md text-center font-medium text-red-600">
+          Google Maps の Map ID が設定されていません
+        </p>
+        <p className="max-w-md text-center text-sm text-zinc-600">
+          Vercel / .env.local に NEXT_PUBLIC_MAP_ID を設定してください（ベクターマップ・Advanced Marker に必要です）。
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full w-full">
-      <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+      <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['marker']}>
         <Map
+          mapId={process.env.NEXT_PUBLIC_MAP_ID}
           defaultCenter={SHINJUKU_CENTER}
           defaultZoom={12}
           className="h-full w-full"
@@ -428,11 +442,11 @@ export default function MapView() {
           {episodes.map((ep) => {
             const pos = episodePositions[ep.id];
             if (!pos) return null;
+            const pin = categoryPinColors(ep.category);
             return (
               <React.Fragment key={ep.id}>
-                <Marker
+                <AdvancedMarker
                   position={pos}
-                  icon={{ url: categoryMarkerIconUrl(ep.category) }}
                   onClick={() => {
                     setSelectedPosition(null);
                     setIsFormOpen(false);
@@ -440,7 +454,13 @@ export default function MapView() {
                     setReportingEpisodeId(null);
                     setOpenInfoEpisodeId(ep.id);
                   }}
-                />
+                >
+                  <Pin
+                    background={pin.background}
+                    borderColor={MARKER_BORDER}
+                    glyphColor={pin.glyphColor}
+                  />
+                </AdvancedMarker>
                 {openInfoEpisodeId === ep.id && (
                   <InfoWindow position={pos} onCloseClick={() => setOpenInfoEpisodeId(null)}>
                     <div className="min-w-[260px] max-w-[360px] space-y-1.5 text-left text-black">
@@ -492,14 +512,16 @@ export default function MapView() {
 
           {selectedPosition && (
             <>
-              <Marker
+              <AdvancedMarker
                 position={selectedPosition}
                 onClick={() => {
                   setSelectedPosition(null);
                   setIsFormOpen(false);
                   setEpisodeBody('');
                 }}
-              />
+              >
+                <Pin background="#4b0082" borderColor="#1a1a1a" glyphColor="#f4f4f5" />
+              </AdvancedMarker>
               {draftInfoOpen && (
                 <InfoWindow
                   position={selectedPosition}

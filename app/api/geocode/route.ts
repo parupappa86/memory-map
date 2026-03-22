@@ -14,7 +14,7 @@ type GeocodeResult = {
   error_message?: string;
 };
 
-/** 都道府県＋市区町村（city_name）と区・町丁（ward_name）を取得。失敗時は null を返し投稿は可能にする */
+/** 都道府県＋市区町村まで（city_name）。町丁名は返さず ward_name は常に null（プライバシー）。失敗時は null を返し投稿は可能にする */
 export async function GET(request: NextRequest) {
   const lat = request.nextUrl.searchParams.get('lat');
   const lng = request.nextUrl.searchParams.get('lng');
@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
 
     let prefecture: string | null = null;
     let municipality: string | null = null;
-    let ward_name: string | null = null;
 
     for (const c of components) {
       if (c.types.includes('administrative_area_level_1')) {
@@ -58,9 +57,6 @@ export async function GET(request: NextRequest) {
       }
       if (c.types.includes('locality')) {
         municipality = c.long_name || null;
-      }
-      if (c.types.includes('sublocality_level_1') || c.types.includes('sublocality')) {
-        ward_name = c.long_name || null;
       }
     }
     if (!municipality) {
@@ -78,7 +74,7 @@ export async function GET(request: NextRequest) {
       city_name = municipality;
     }
 
-    return NextResponse.json({ city_name, ward_name });
+    return NextResponse.json({ city_name, ward_name: null });
   } catch (err) {
     console.error('[geocode] 逆ジオコード失敗:', err);
     return NextResponse.json({ city_name: null, ward_name: null });

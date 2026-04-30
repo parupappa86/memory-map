@@ -200,7 +200,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [episodeBody, setEpisodeBody] = useState('');
   const [episodeCategory, setEpisodeCategory] = useState<string>(EPISODE_CATEGORIES[0].value);
-  const [episodeEventDate, setEpisodeEventDate] = useState('');
+  const [episodeEventYear, setEpisodeEventYear] = useState('');
   const [episodes, setEpisodes] = useState<EpisodePublic[]>([]);
   const [episodePositions, setEpisodePositions] = useState<Record<string, google.maps.LatLngLiteral>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -290,7 +290,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     setIsFormOpen(false);
     setEpisodeBody('');
     setEpisodeCategory(EPISODE_CATEGORIES[0].value);
-    setEpisodeEventDate('');
+    setEpisodeEventYear('');
     setCityName(null);
     setWardName(null);
     setIsGeocoding(true);
@@ -357,7 +357,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
       const { lat, lng } = selectedPosition;
       if (!supabase) return;
       setIsSubmitting(true);
-      const eventDate = episodeEventDate.trim() || null;
+      const eventDate = episodeEventYear.trim() ? `${episodeEventYear.trim()}-01-01` : null;
       const { data, error } = await supabase
         .from('episodes')
         .insert({
@@ -385,7 +385,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
       setEpisodes((prev) => [data as EpisodePublic, ...prev]);
       setSubmitSuccess(true);
     },
-    [selectedPosition, episodeBody, episodeCategory, episodeEventDate, cityName, wardName, isGeocoding]
+    [selectedPosition, episodeBody, episodeCategory, episodeEventYear, cityName, wardName, isGeocoding]
   );
 
   useEffect(() => {
@@ -395,7 +395,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
       setIsFormOpen(false);
       setEpisodeBody('');
       setEpisodeCategory(EPISODE_CATEGORIES[0].value);
-      setEpisodeEventDate('');
+      setEpisodeEventYear('');
       setCityName(null);
       setWardName(null);
       setIsGeocoding(false);
@@ -556,76 +556,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
                     ) : submitSuccess ? (
                       <p className="py-1.5 text-center text-base text-zinc-700">記録を保存しました</p>
                     ) : (
-                      <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-                            怪異の種別
-                          </label>
-                          <select
-                            value={episodeCategory}
-                            onChange={(e) => setEpisodeCategory(e.target.value)}
-                            disabled={isSubmitting}
-                            className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
-                          >
-                            {EPISODE_CATEGORIES.map((c) => (
-                              <option key={c.value} value={c.value}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-                            体験時期
-                          </label>
-                          <input
-                            type="date"
-                            value={episodeEventDate}
-                            onChange={(e) => setEpisodeEventDate(e.target.value)}
-                            disabled={isSubmitting}
-                            className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
-                          />
-                        </div>
-                        <p className="text-left text-xs leading-relaxed text-zinc-600">
-                          {isGeocoding ? (
-                            <>📍 市区町村を確認しています...</>
-                          ) : cityName || wardName ? (
-                            <>
-                              📍{' '}
-                              {[cityName, wardName].filter(Boolean).join('')}
-                              に記録されます
-                            </>
-                          ) : (
-                            <>📍 市区町村名を特定できませんでした（座標は非公開で保存されます）</>
-                          )}
-                        </p>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-                            体験内容の詳細
-                          </label>
-                          <textarea
-                            placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
-                            rows={4}
-                            value={episodeBody}
-                            onChange={(e) => setEpisodeBody(e.target.value)}
-                            disabled={isSubmitting}
-                            spellCheck={false}
-                            autoComplete="off"
-                            className="min-h-[6rem] w-full resize-none border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50 leading-normal"
-                            style={{ lineHeight: 1.5 }}
-                          />
-                        </div>
-                        <p className="text-[11px] leading-relaxed text-zinc-500">
-                          【禁止事項】個人宅の特定、特定の施設・個人への誹謗中傷、プライバシーを侵害する内容の投稿。違反した場合は予告なく削除します。
-                        </p>
-                        <button
-                          type="submit"
-                          disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
-                          className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
-                        >
-                          {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
-                        </button>
-                      </form>
+                      <p className="text-xs text-zinc-600">下のフォームに入力して保存してください。</p>
                     )}
                   </div>
                 </InfoWindow>
@@ -633,6 +564,81 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
             </>
           )}
         </Map>
+        {mode === 'post' && selectedPosition && isFormOpen && !submitSuccess && (
+          <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 shadow-xl">
+            <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  怪異の種別
+                </label>
+                <select
+                  value={episodeCategory}
+                  onChange={(e) => setEpisodeCategory(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
+                >
+                  {EPISODE_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  体験時期（年）
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={episodeEventYear}
+                  onChange={(e) => setEpisodeEventYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  maxLength={4}
+                  placeholder="例: 1998"
+                  disabled={isSubmitting}
+                  className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
+                />
+              </div>
+              <p className="text-left text-xs leading-relaxed text-zinc-300">
+                {isGeocoding ? (
+                  <>📍 市区町村を確認しています...</>
+                ) : cityName || wardName ? (
+                  <>
+                    📍 プライバシー保護のため、{[cityName, wardName].filter(Boolean).join('')}に記録されます
+                  </>
+                ) : (
+                  <>📍 市区町村名を特定できませんでした（座標は非公開で保存されます）</>
+                )}
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  体験内容の詳細
+                </label>
+                <textarea
+                  placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
+                  rows={4}
+                  value={episodeBody}
+                  onChange={(e) => setEpisodeBody(e.target.value)}
+                  disabled={isSubmitting}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="min-h-[6rem] w-full resize-none border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50 leading-normal"
+                  style={{ lineHeight: 1.5 }}
+                />
+              </div>
+              <p className="text-[11px] leading-relaxed text-zinc-400">
+                【禁止事項】個人宅の特定、特定の施設・個人への誹謗中傷、プライバシーを侵害する内容の投稿。違反した場合は予告なく削除します。
+              </p>
+              <button
+                type="submit"
+                disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
+                className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
+              </button>
+            </form>
+          </div>
+        )}
         <BoundsListPanelWrapper
           episodes={episodes}
           episodePositions={episodePositions}

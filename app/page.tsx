@@ -78,12 +78,18 @@ export default function HomePage() {
           </ul>
         </section>
 
-        <div className="mt-12">
+        <div className="mt-12 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link
             href="/map"
-            className="inline-block w-full border-2 border-zinc-900 bg-zinc-900 px-6 py-4 text-center text-[1.1rem] font-medium text-white transition-colors hover:bg-zinc-800 sm:w-auto sm:min-w-[280px]"
+            className="inline-block w-full border-2 border-zinc-900 bg-zinc-900 px-6 py-4 text-center text-[1.1rem] font-medium text-white transition-colors hover:bg-zinc-800 sm:w-auto sm:min-w-[240px]"
           >
-            地図から探す・投稿する
+            地図を見る
+          </Link>
+          <Link
+            href="/post"
+            className="inline-block w-full border-2 border-zinc-300 bg-white px-6 py-4 text-center text-[1.1rem] font-medium text-zinc-900 transition-colors hover:border-zinc-500 hover:bg-zinc-50 sm:w-auto sm:min-w-[240px]"
+          >
+            体験を投稿する
           </Link>
         </div>
       </div>

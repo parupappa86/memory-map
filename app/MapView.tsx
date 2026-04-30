@@ -175,12 +175,27 @@ function contentPreview(content: string, maxLen: number): string {
   return t.slice(0, maxLen) + '...';
 }
 
-function addressKey(ep: EpisodePublic): string | null {
-  if (!ep.city_name?.trim() || !ep.ward_name?.trim()) return null;
-  return `${ep.city_name.trim()}\t${ep.ward_name.trim()}`;
+/**
+ * 公開地図用: 同一市区町村（都道府県＋市区町村）の投稿を同一座標に集約するキー。
+ * DB の lat/lng カラムは閲覧側では参照しない。
+ */
+function municipalityKey(ep: EpisodePublic): string | null {
+  const c = ep.city_name?.trim();
+  const w = ep.ward_name?.trim();
+  if (!c || !w) return null;
+  return `${c}\t${w}`;
 }
 
-export default function MapView() {
+function forwardGeocodeQuery(ep: EpisodePublic): string | null {
+  const c = ep.city_name?.trim();
+  const w = ep.ward_name?.trim();
+  if (!c || !w) return null;
+  return `${c}${w}`;
+}
+
+export type MapViewMode = 'view' | 'post';
+
+export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
   const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [episodeBody, setEpisodeBody] = useState('');
@@ -220,13 +235,14 @@ export default function MapView() {
       const next: Record<string, google.maps.LatLngLiteral> = {};
       const cache = posCacheRef.current;
       for (const ep of episodes) {
-        const key = addressKey(ep);
+        const key = municipalityKey(ep);
         if (!key) continue;
         if (cache.has(key)) {
           next[ep.id] = cache.get(key)!;
           continue;
         }
-        const q = `${ep.city_name!.trim()}${ep.ward_name!.trim()}`;
+        const q = forwardGeocodeQuery(ep);
+        if (!q) continue;
         try {
           const res = await fetch(`/api/geocode/forward?q=${encodeURIComponent(q)}`);
           const data = (await res.json()) as { lat: number | null; lng: number | null };
@@ -436,7 +452,7 @@ export default function MapView() {
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
-          onClick={handleMapClick}
+          onClick={mode === 'post' ? handleMapClick : undefined}
           style={{ width: '100%', height: '100%' }}
         >
           {episodes.map((ep) => {
@@ -510,7 +526,7 @@ export default function MapView() {
             );
           })}
 
-          {selectedPosition && (
+          {mode === 'post' && selectedPosition && (
             <>
               <AdvancedMarker
                 position={selectedPosition}
@@ -572,11 +588,15 @@ export default function MapView() {
                         </div>
                         <p className="text-left text-xs leading-relaxed text-zinc-600">
                           {isGeocoding ? (
-                            <>📍 地点を解析中...</>
+                            <>📍 市区町村を確認しています...</>
                           ) : cityName || wardName ? (
-                            <>📍 {[cityName, wardName].filter(Boolean).join(' ')} として記録されます</>
+                            <>
+                              📍{' '}
+                              {[cityName, wardName].filter(Boolean).join('')}
+                              に記録されます
+                            </>
                           ) : (
-                            <>📍 地点名が特定できませんでした</>
+                            <>📍 市区町村名を特定できませんでした（座標は非公開で保存されます）</>
                           )}
                         </p>
                         <div>

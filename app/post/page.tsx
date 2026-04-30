@@ -7,27 +7,19 @@ const MapView = dynamic(() => import('../MapView'), { ssr: false });
 
 const SITE_TITLE = 'みんなのぞっとする話マップ';
 
-export default function MapPage() {
+export default function PostPage() {
   return (
     <div className="flex h-screen w-screen flex-col bg-white">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3">
-        <div className="flex flex-col gap-0.5">
-          <Link
-            href="/"
-            className="text-lg font-medium tracking-tight text-zinc-900 hover:text-zinc-600"
-          >
-            {SITE_TITLE}
-          </Link>
-          <p className="text-xs text-zinc-500">
-            閲覧専用・ピンは市区町村の代表地点に集約表示されます（正確な投稿座標は表示されません）
-          </p>
-        </div>
+        <Link
+          href="/"
+          className="text-lg font-medium tracking-tight text-zinc-900 hover:text-zinc-600"
+        >
+          {SITE_TITLE}
+        </Link>
         <nav className="flex flex-wrap items-center gap-4 text-sm">
-          <Link
-            href="/post"
-            className="border border-zinc-800 bg-zinc-900 px-3 py-2 text-white hover:bg-zinc-800"
-          >
-            体験を投稿する
+          <Link href="/map" className="text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline">
+            地図を見る（閲覧）
           </Link>
           <Link href="/" className="text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline">
             トップへ
@@ -36,7 +28,7 @@ export default function MapPage() {
       </header>
       <main className="min-h-0 flex-1">
         <div className="h-full w-full">
-          <MapView mode="view" />
+          <MapView mode="post" />
         </div>
       </main>
     </div>

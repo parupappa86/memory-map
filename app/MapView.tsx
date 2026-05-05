@@ -308,7 +308,6 @@ const PostFormOverlay = React.memo(function PostFormOverlay({
 export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
   const isPostMode = mode === 'post';
   const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
-  const [isPostingEnabled, setIsPostingEnabled] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [episodeBody, setEpisodeBody] = useState('');
   const [episodeCategory, setEpisodeCategory] = useState<string>(EPISODE_CATEGORIES[0].value);
@@ -392,7 +391,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     const ll = e.detail.latLng;
     if (!ll) return;
     setSelectedPosition(ll);
-    setIsFormOpen(false);
+    setIsFormOpen(true);
     setEpisodeBody('');
     setEpisodeCategory(EPISODE_CATEGORIES[0].value);
     setEpisodeEventYear('');
@@ -436,24 +435,6 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
 
   const handleListSelectEpisode = useCallback((ep: EpisodePublic) => {
     setSelectedEpisodeIdForFly(ep.id);
-  }, []);
-
-  const handleStartPosting = useCallback(() => {
-    setIsPostingEnabled(true);
-    setIsFormOpen(false);
-    setSubmitSuccess(false);
-  }, []);
-
-  const handleStopPosting = useCallback(() => {
-    setIsPostingEnabled(false);
-    setSelectedPosition(null);
-    setIsFormOpen(false);
-    setEpisodeBody('');
-    setEpisodeCategory(EPISODE_CATEGORIES[0].value);
-    setEpisodeEventYear('');
-    setCityName(null);
-    setWardName(null);
-    setIsGeocoding(false);
   }, []);
 
   const handleOpenReport = useCallback((episodeId: string, e: React.MouseEvent) => {
@@ -572,7 +553,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
-          onClick={isPostMode && isPostingEnabled ? handleMapClick : undefined}
+          onClick={isPostMode ? handleMapClick : undefined}
           style={{ width: '100%', height: '100%' }}
         >
           {episodes.map((ep) => {
@@ -616,32 +597,6 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
             </>
           )}
         </Map>
-        {isPostMode && (
-          <div className="absolute left-4 top-4 z-[1200] flex items-center gap-2">
-            {!isPostingEnabled ? (
-              <button
-                type="button"
-                onClick={handleStartPosting}
-                className="rounded border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow hover:bg-zinc-800"
-              >
-                ＋体験を記録する
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleStopPosting}
-                className="rounded border border-zinc-400 bg-white px-4 py-2 text-sm font-medium text-zinc-900 shadow hover:bg-zinc-50"
-              >
-                投稿モードを終了
-              </button>
-            )}
-          </div>
-        )}
-        {isPostMode && isPostingEnabled && !selectedPosition && (
-          <div className="absolute bottom-4 left-4 z-[1200] max-w-[460px] rounded border border-zinc-700 bg-zinc-950/90 px-3 py-2 text-xs leading-relaxed text-zinc-200 shadow-xl">
-            投稿モードです。地図上をクリックして投稿地点を選択してください。
-          </div>
-        )}
         {isPostMode && selectedPosition && !isFormOpen && !submitSuccess && (
           <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 shadow-xl">
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-300">記録を追加</p>

@@ -12,6 +12,10 @@ function contentPreview(content: string, maxLen: number): string {
   return t.slice(0, maxLen) + '...';
 }
 
+function formatPostNumber(id: string): string {
+  return `#${String(id).padStart(3, '0')}`;
+}
+
 export default function AdminReportsPage() {
   const [list, setList] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,7 +105,8 @@ export default function AdminReportsPage() {
                         {row.episode ? (
                           <div className="space-y-1 text-zinc-300">
                             <p className="font-medium text-zinc-200">
-                              {getCategoryDisplayName(row.episode.category)}
+                              {getCategoryDisplayName(row.episode.category)}{' '}
+                              <span className="text-zinc-400">{formatPostNumber(row.episode.id)}</span>
                             </p>
                             <p className="whitespace-pre-wrap text-zinc-400">
                               {contentPreview(row.episode.content, 120)}

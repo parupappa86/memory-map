@@ -200,6 +200,10 @@ function contentPreview(content: string, maxLen: number): string {
   return t.slice(0, maxLen) + '...';
 }
 
+function formatPostNumber(id: string): string {
+  return `#${String(id).padStart(3, '0')}`;
+}
+
 /**
  * 公開地図用: 同一市区町村（都道府県＋市区町村）の投稿を同一座標に集約するキー。
  * DB の lat/lng カラムは閲覧側では参照しない。
@@ -678,7 +682,10 @@ export default function MapView({
               <p>
                 <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">怪異の種別</span>
                 <br />
-                <span className="text-base font-serif">{getCategoryDisplayName(openInfoEpisode.category)}</span>
+                <span className="text-base font-serif">
+                  {getCategoryDisplayName(openInfoEpisode.category)}{' '}
+                  <span className="text-sm text-zinc-500">{formatPostNumber(openInfoEpisode.id)}</span>
+                </span>
               </p>
               <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験内容の詳細</p>
               <p className="whitespace-pre-wrap text-base font-serif">{openInfoEpisode.content}</p>
@@ -796,7 +803,10 @@ function BoundsListPanelWrapper({
                     : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50'
                 }`}
               >
-                <span className="font-medium text-zinc-600">{getCategoryDisplayName(ep.category)}</span>
+                <span className="font-medium text-zinc-600">
+                  {getCategoryDisplayName(ep.category)}{' '}
+                  <span className="text-sm text-zinc-500">{formatPostNumber(ep.id)}</span>
+                </span>
                 <br />
                 <span className="font-medium text-zinc-900">{contentPreview(ep.content, 28)}</span>
               </button>

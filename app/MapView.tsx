@@ -34,6 +34,27 @@ const REPORT_REASONS = [
 const MARKER_BG = '#262626';
 const MARKER_BORDER = '#0a0a0a';
 
+type PostFormOverlayProps = {
+  isSubmitting: boolean;
+  isGeocoding: boolean;
+  episodeCategory: string;
+  episodeEventYear: string;
+  episodeBody: string;
+  cityName: string | null;
+  wardName: string | null;
+  onCategoryChange: (value: string) => void;
+  onYearChange: (value: string) => void;
+  onBodyChange: (value: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+};
+
+function normalizeYearInput(value: string): string {
+  const halfWidth = value.replace(/[０-９]/g, (s) =>
+    String.fromCharCode(s.charCodeAt(0) - 0xfee0)
+  );
+  return halfWidth.replace(/[^0-9]/g, '').slice(0, 4);
+}
+
 function categoryPinColors(category: string): { background: string; glyphColor: string } {
   const fill: Record<string, string> = {
     '不思議な体験': '#3f3f46',
@@ -194,6 +215,98 @@ function forwardGeocodeQuery(ep: EpisodePublic): string | null {
 }
 
 export type MapViewMode = 'view' | 'post';
+
+const PostFormOverlay = React.memo(function PostFormOverlay({
+  isSubmitting,
+  isGeocoding,
+  episodeCategory,
+  episodeEventYear,
+  episodeBody,
+  cityName,
+  wardName,
+  onCategoryChange,
+  onYearChange,
+  onBodyChange,
+  onSubmit,
+}: PostFormOverlayProps) {
+  return (
+    <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 shadow-xl">
+      <form className="flex flex-col gap-2" onSubmit={onSubmit}>
+        <div>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+            怪異の種別
+          </label>
+          <select
+            value={episodeCategory}
+            onChange={(e) => onCategoryChange(e.target.value)}
+            disabled={isSubmitting}
+            className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
+          >
+            {EPISODE_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+            体験時期（年）
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={episodeEventYear}
+            onChange={(e) => onYearChange(normalizeYearInput(e.target.value))}
+            maxLength={4}
+            placeholder="例: 1998"
+            disabled={isSubmitting}
+            className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
+          />
+        </div>
+        <p className="text-left text-xs leading-relaxed text-zinc-300">
+          {isGeocoding ? (
+            <>📍 市区町村を確認しています...</>
+          ) : cityName || wardName ? (
+            <>
+              📍 近隣住民への配慮とプライバシー保護のため、正確な地点ではなく市区の中心付近にピンを設置しています。（この投稿は
+              {[cityName, wardName].filter(Boolean).join('')}
+              に記録されます）
+            </>
+          ) : (
+            <>📍 市区町村名を特定できませんでした（座標は非公開で保存されます）</>
+          )}
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+            体験内容の詳細
+          </label>
+          <textarea
+            placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
+            rows={4}
+            value={episodeBody}
+            onChange={(e) => onBodyChange(e.target.value)}
+            disabled={isSubmitting}
+            spellCheck={false}
+            autoComplete="off"
+            className="min-h-[6rem] w-full resize-none border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50 leading-normal"
+            style={{ lineHeight: 1.5 }}
+          />
+        </div>
+        <p className="text-[11px] leading-relaxed text-zinc-400">
+          【禁止事項】個人宅の特定、特定の施設・個人への誹謗中傷、プライバシーを侵害する内容の投稿。違反した場合は予告なく削除します。
+        </p>
+        <button
+          type="submit"
+          disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
+          className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
+        </button>
+      </form>
+    </div>
+  );
+});
 
 export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
   const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
@@ -565,79 +678,19 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
           )}
         </Map>
         {mode === 'post' && selectedPosition && isFormOpen && !submitSuccess && (
-          <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 shadow-xl">
-            <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-              <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  怪異の種別
-                </label>
-                <select
-                  value={episodeCategory}
-                  onChange={(e) => setEpisodeCategory(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
-                >
-                  {EPISODE_CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  体験時期（年）
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={episodeEventYear}
-                  onChange={(e) => setEpisodeEventYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  maxLength={4}
-                  placeholder="例: 1998"
-                  disabled={isSubmitting}
-                  className="w-full border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50"
-                />
-              </div>
-              <p className="text-left text-xs leading-relaxed text-zinc-300">
-                {isGeocoding ? (
-                  <>📍 市区町村を確認しています...</>
-                ) : cityName || wardName ? (
-                  <>
-                    📍 プライバシー保護のため、{[cityName, wardName].filter(Boolean).join('')}に記録されます
-                  </>
-                ) : (
-                  <>📍 市区町村名を特定できませんでした（座標は非公開で保存されます）</>
-                )}
-              </p>
-              <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  体験内容の詳細
-                </label>
-                <textarea
-                  placeholder="ここで何が起きましたか？あなたの体験や、その場所で感じた空気を自由に書いてください。"
-                  rows={4}
-                  value={episodeBody}
-                  onChange={(e) => setEpisodeBody(e.target.value)}
-                  disabled={isSubmitting}
-                  spellCheck={false}
-                  autoComplete="off"
-                  className="min-h-[6rem] w-full resize-none border border-zinc-600 bg-zinc-900 p-2.5 text-base text-white placeholder:text-zinc-500 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:opacity-50 leading-normal"
-                  style={{ lineHeight: 1.5 }}
-                />
-              </div>
-              <p className="text-[11px] leading-relaxed text-zinc-400">
-                【禁止事項】個人宅の特定、特定の施設・個人への誹謗中傷、プライバシーを侵害する内容の投稿。違反した場合は予告なく削除します。
-              </p>
-              <button
-                type="submit"
-                disabled={isSubmitting || isGeocoding || !episodeBody.trim()}
-                className="border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
-              >
-                {isSubmitting ? '保存中...' : isGeocoding ? '解析を待っています...' : '記録を保存する'}
-              </button>
-            </form>
-          </div>
+          <PostFormOverlay
+            isSubmitting={isSubmitting}
+            isGeocoding={isGeocoding}
+            episodeCategory={episodeCategory}
+            episodeEventYear={episodeEventYear}
+            episodeBody={episodeBody}
+            cityName={cityName}
+            wardName={wardName}
+            onCategoryChange={setEpisodeCategory}
+            onYearChange={setEpisodeEventYear}
+            onBodyChange={setEpisodeBody}
+            onSubmit={handleSubmit}
+          />
         )}
         <BoundsListPanelWrapper
           episodes={episodes}

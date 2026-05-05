@@ -18,17 +18,9 @@ export default function MapPage() {
           >
             {SITE_TITLE}
           </Link>
-          <p className="text-xs text-zinc-500">
-            閲覧専用・ピンは市区町村の代表地点に集約表示されます（正確な投稿座標は表示されません）
-          </p>
+          <p className="text-xs text-zinc-500">地図の閲覧と投稿はこのページで行えます。</p>
         </div>
         <nav className="flex flex-wrap items-center gap-4 text-sm">
-          <Link
-            href="/post"
-            className="border border-zinc-800 bg-zinc-900 px-3 py-2 text-white hover:bg-zinc-800"
-          >
-            体験を投稿する
-          </Link>
           <Link href="/" className="text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline">
             トップへ
           </Link>
@@ -36,7 +28,7 @@ export default function MapPage() {
       </header>
       <main className="min-h-0 flex-1">
         <div className="h-full w-full">
-          <MapView mode="view" />
+          <MapView mode="post" />
         </div>
       </main>
     </div>

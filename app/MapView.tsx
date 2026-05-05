@@ -269,9 +269,7 @@ const PostFormOverlay = React.memo(function PostFormOverlay({
             <>📍 市区町村を確認しています...</>
           ) : cityName || wardName ? (
             <>
-              📍 近隣住民への配慮とプライバシー保護のため、正確な地点ではなく市区の中心付近にピンを設置しています。（この投稿は
-              {[cityName, wardName].filter(Boolean).join('')}
-              に記録されます）
+              📍 近隣への配慮とプライバシー保護のため、正確な地点ではなく、入力された市区町村の中心付近にピンを設置します。これにより特定の場所や個人が特定されることはありません。
             </>
           ) : (
             <>📍 市区町村名を特定できませんでした（座標は非公開で保存されます）</>
@@ -309,7 +307,9 @@ const PostFormOverlay = React.memo(function PostFormOverlay({
 });
 
 export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
+  const isPostMode = mode === 'post';
   const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
+  const [isPostingEnabled, setIsPostingEnabled] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [episodeBody, setEpisodeBody] = useState('');
   const [episodeCategory, setEpisodeCategory] = useState<string>(EPISODE_CATEGORIES[0].value);
@@ -324,7 +324,6 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
   const [wardName, setWardName] = useState<string | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [openInfoEpisodeId, setOpenInfoEpisodeId] = useState<string | null>(null);
-  const [draftInfoOpen, setDraftInfoOpen] = useState(true);
   const posCacheRef = useRef<globalThis.Map<string, google.maps.LatLngLiteral>>(
     new globalThis.Map()
   );
@@ -382,12 +381,6 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
   }, [episodes]);
 
   useEffect(() => {
-    if (!selectedPosition) return;
-    const t = setTimeout(() => setDraftInfoOpen(true), 0);
-    return () => clearTimeout(t);
-  }, [selectedPosition]);
-
-  useEffect(() => {
     if (!selectedEpisodeIdForFly) return;
     const t = setTimeout(() => {
       setOpenInfoEpisodeId(selectedEpisodeIdForFly);
@@ -407,7 +400,6 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     setCityName(null);
     setWardName(null);
     setIsGeocoding(true);
-    setDraftInfoOpen(true);
     setOpenInfoEpisodeId(null);
   }, []);
 
@@ -443,14 +435,26 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     };
   }, [selectedPosition]);
 
-  const handleOpenForm = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsFormOpen(true);
-  }, []);
-
   const handleListSelectEpisode = useCallback((ep: EpisodePublic) => {
     setSelectedEpisodeIdForFly(ep.id);
+  }, []);
+
+  const handleStartPosting = useCallback(() => {
+    setIsPostingEnabled(true);
+    setIsFormOpen(false);
+    setSubmitSuccess(false);
+  }, []);
+
+  const handleStopPosting = useCallback(() => {
+    setIsPostingEnabled(false);
+    setSelectedPosition(null);
+    setIsFormOpen(false);
+    setEpisodeBody('');
+    setEpisodeCategory(EPISODE_CATEGORIES[0].value);
+    setEpisodeEventYear('');
+    setCityName(null);
+    setWardName(null);
+    setIsGeocoding(false);
   }, []);
 
   const handleOpenReport = useCallback((episodeId: string, e: React.MouseEvent) => {
@@ -565,7 +569,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
-          onClick={mode === 'post' ? handleMapClick : undefined}
+          onClick={isPostMode && isPostingEnabled ? handleMapClick : undefined}
           style={{ width: '100%', height: '100%' }}
         >
           {episodes.map((ep) => {
@@ -639,7 +643,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
             );
           })}
 
-          {mode === 'post' && selectedPosition && (
+          {isPostMode && selectedPosition && (
             <>
               <AdvancedMarker
                 position={selectedPosition}
@@ -651,33 +655,53 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
               >
                 <Pin background="#4b0082" borderColor="#1a1a1a" glyphColor="#f4f4f5" />
               </AdvancedMarker>
-              {draftInfoOpen && (
-                <InfoWindow
-                  position={selectedPosition}
-                  onCloseClick={() => setDraftInfoOpen(false)}
-                >
-                  <div className="min-w-[240px] text-center text-black">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">記録を追加</p>
-                    {!isFormOpen ? (
-                      <button
-                        type="button"
-                        onClick={handleOpenForm}
-                        className="w-full border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white transition-colors hover:bg-zinc-700"
-                      >
-                        体験を記録する
-                      </button>
-                    ) : submitSuccess ? (
-                      <p className="py-1.5 text-center text-base text-zinc-700">記録を保存しました</p>
-                    ) : (
-                      <p className="text-xs text-zinc-600">下のフォームに入力して保存してください。</p>
-                    )}
-                  </div>
-                </InfoWindow>
-              )}
             </>
           )}
         </Map>
-        {mode === 'post' && selectedPosition && isFormOpen && !submitSuccess && (
+        {isPostMode && (
+          <div className="absolute left-4 top-4 z-[1200] flex items-center gap-2">
+            {!isPostingEnabled ? (
+              <button
+                type="button"
+                onClick={handleStartPosting}
+                className="rounded border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow hover:bg-zinc-800"
+              >
+                ＋体験を記録する
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStopPosting}
+                className="rounded border border-zinc-400 bg-white px-4 py-2 text-sm font-medium text-zinc-900 shadow hover:bg-zinc-50"
+              >
+                投稿モードを終了
+              </button>
+            )}
+          </div>
+        )}
+        {isPostMode && isPostingEnabled && !selectedPosition && (
+          <div className="absolute bottom-4 left-4 z-[1200] max-w-[460px] rounded border border-zinc-700 bg-zinc-950/90 px-3 py-2 text-xs leading-relaxed text-zinc-200 shadow-xl">
+            投稿モードです。地図上をクリックして投稿地点を選択してください。
+          </div>
+        )}
+        {isPostMode && selectedPosition && !isFormOpen && !submitSuccess && (
+          <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 shadow-xl">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-300">記録を追加</p>
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(true)}
+              className="w-full border border-zinc-500 bg-zinc-800 px-3 py-2.5 text-base font-medium text-white transition-colors hover:bg-zinc-700"
+            >
+              この地点で体験を記録する
+            </button>
+          </div>
+        )}
+        {isPostMode && selectedPosition && submitSuccess && (
+          <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 text-center text-base text-zinc-100 shadow-xl">
+            記録を保存しました
+          </div>
+        )}
+        {isPostMode && selectedPosition && isFormOpen && !submitSuccess && (
           <PostFormOverlay
             isSubmitting={isSubmitting}
             isGeocoding={isGeocoding}

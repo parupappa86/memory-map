@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AdvancedMarker,
   APIProvider,
-  InfoWindow,
   Map,
   Pin,
   useMap,
@@ -467,6 +466,10 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     setReportingEpisodeId(null);
   }, []);
 
+  const openInfoEpisode = openInfoEpisodeId
+    ? episodes.find((ep) => ep.id === openInfoEpisodeId) ?? null
+    : null;
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -594,51 +597,6 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
                     glyphColor={pin.glyphColor}
                   />
                 </AdvancedMarker>
-                {openInfoEpisodeId === ep.id && (
-                  <InfoWindow position={pos} onCloseClick={() => setOpenInfoEpisodeId(null)}>
-                    <div className="min-w-[260px] max-w-[360px] space-y-1.5 text-left text-black">
-                      <p>
-                        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">怪異の種別</span>
-                        <br />
-                        <span className="text-base font-serif">{getCategoryDisplayName(ep.category)}</span>
-                      </p>
-                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験内容の詳細</p>
-                      <p className="whitespace-pre-wrap text-base font-serif">{ep.content}</p>
-                      <p className="text-base text-zinc-700">
-                        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験時期</span>{' '}
-                        {formatEventDate(ep.event_date)}
-                      </p>
-                      <p className="text-base text-zinc-600">
-                        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">記録日</span>{' '}
-                        {formatDate(ep.created_at)}
-                      </p>
-                      {ep.city_name && ep.ward_name && (
-                        <p className="text-xs text-zinc-500">
-                          表示位置: {ep.city_name}
-                          {ep.ward_name}
-                          （市区町村の代表地点）
-                        </p>
-                      )}
-                      {reportingEpisodeId !== ep.id ? (
-                        <p className="pt-1.5 text-xs text-zinc-500">
-                          <button
-                            type="button"
-                            onClick={(ev) => handleOpenReport(ep.id, ev)}
-                            className="underline hover:text-zinc-700"
-                          >
-                            この投稿を通報・削除依頼する
-                          </button>
-                        </p>
-                      ) : (
-                        <ReportForm
-                          episodeId={ep.id}
-                          onSuccess={handleCloseReport}
-                          onCancel={handleCloseReport}
-                        />
-                      )}
-                    </div>
-                  </InfoWindow>
-                )}
               </React.Fragment>
             );
           })}
@@ -715,6 +673,64 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
             onBodyChange={setEpisodeBody}
             onSubmit={handleSubmit}
           />
+        )}
+        {openInfoEpisode && (
+          <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-300 bg-white/95 p-3 text-black shadow-xl">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">投稿の詳細</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenInfoEpisodeId(null);
+                  setReportingEpisodeId(null);
+                }}
+                className="rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-100"
+              >
+                閉じる
+              </button>
+            </div>
+            <div className="mt-1.5 space-y-1.5 text-left">
+              <p>
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">怪異の種別</span>
+                <br />
+                <span className="text-base font-serif">{getCategoryDisplayName(openInfoEpisode.category)}</span>
+              </p>
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験内容の詳細</p>
+              <p className="whitespace-pre-wrap text-base font-serif">{openInfoEpisode.content}</p>
+              <p className="text-base text-zinc-700">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験時期</span>{' '}
+                {formatEventDate(openInfoEpisode.event_date)}
+              </p>
+              <p className="text-base text-zinc-600">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">記録日</span>{' '}
+                {formatDate(openInfoEpisode.created_at)}
+              </p>
+              {openInfoEpisode.city_name && openInfoEpisode.ward_name && (
+                <p className="text-xs text-zinc-500">
+                  表示位置: {openInfoEpisode.city_name}
+                  {openInfoEpisode.ward_name}
+                  （市区町村の代表地点）
+                </p>
+              )}
+              {reportingEpisodeId !== openInfoEpisode.id ? (
+                <p className="pt-1.5 text-xs text-zinc-500">
+                  <button
+                    type="button"
+                    onClick={(ev) => handleOpenReport(openInfoEpisode.id, ev)}
+                    className="underline hover:text-zinc-700"
+                  >
+                    この投稿を通報・削除依頼する
+                  </button>
+                </p>
+              ) : (
+                <ReportForm
+                  episodeId={openInfoEpisode.id}
+                  onSuccess={handleCloseReport}
+                  onCancel={handleCloseReport}
+                />
+              )}
+            </div>
+          </div>
         )}
         <BoundsListPanelWrapper
           episodes={episodes}

@@ -47,6 +47,11 @@ type PostFormOverlayProps = {
   onSubmit: (e: React.FormEvent) => void;
 };
 
+type EpisodeAdmin = EpisodePublic & {
+  actual_latitude: number | null;
+  actual_longitude: number | null;
+};
+
 function normalizeYearInput(value: string): string {
   const halfWidth = value.replace(/[０-９]/g, (s) =>
     String.fromCharCode(s.charCodeAt(0) - 0xfee0)
@@ -305,7 +310,13 @@ const PostFormOverlay = React.memo(function PostFormOverlay({
   );
 });
 
-export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
+export default function MapView({
+  mode = 'view',
+  isAdmin = false,
+}: {
+  mode?: MapViewMode;
+  isAdmin?: boolean;
+}) {
   const isPostMode = mode === 'post';
   const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -330,6 +341,15 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     if (!supabase) return;
     const client = supabase;
     async function fetchEpisodes() {
+      if (isAdmin) {
+        const { data, error } = await client
+          .from('episodes')
+          .select('id, content, category, event_date, created_at, city_name, ward_name, actual_latitude, actual_longitude')
+          .order('created_at', { ascending: false });
+        if (!error && data) setEpisodes(data as unknown as EpisodePublic[]);
+        return;
+      }
+
       const { data, error } = await client
         .from('episodes')
         .select('id, content, category, event_date, created_at, city_name, ward_name')
@@ -337,9 +357,19 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
       if (!error && data) setEpisodes(data as EpisodePublic[]);
     }
     fetchEpisodes();
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
+    if (isAdmin) {
+      const next: Record<string, google.maps.LatLngLiteral> = {};
+      for (const ep of episodes as EpisodeAdmin[]) {
+        if (ep.actual_latitude == null || ep.actual_longitude == null) continue;
+        next[ep.id] = { lat: ep.actual_latitude, lng: ep.actual_longitude };
+      }
+      setEpisodePositions(next);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       const next: Record<string, google.maps.LatLngLiteral> = {};
@@ -376,7 +406,7 @@ export default function MapView({ mode = 'view' }: { mode?: MapViewMode }) {
     return () => {
       cancelled = true;
     };
-  }, [episodes]);
+  }, [episodes, isAdmin]);
 
   useEffect(() => {
     if (!selectedEpisodeIdForFly) return;

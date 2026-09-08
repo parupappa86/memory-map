@@ -24,6 +24,10 @@ const FLY_TO_ZOOM = 16;
 
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
+} else {
+  // カスタムダークスタイルのみ使う場合、Mapbox セッション認証でキャンバスが消されないようにする
+  mapboxgl.config.REQUIRE_ACCESS_TOKEN = false;
+  mapboxgl.config.API_URL = '';
 }
 
 /** 通報理由の選択肢 */
@@ -838,7 +842,12 @@ function MapboxViewport({
       .addTo(map);
   }, [mapReady, isPostMode, selectedPosition]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  return (
+    <div
+      ref={containerRef}
+      className={`absolute inset-0 ${MAPBOX_TOKEN ? '' : 'mapbox-fallback'}`}
+    />
+  );
 }
 
 function BoundsListPanel({

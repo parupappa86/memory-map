@@ -1,13 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  AdvancedMarker,
-  APIProvider,
-  Map,
-  Pin,
-  useMap,
-} from '@vis.gl/react-google-maps';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import {
   EPISODE_CATEGORIES,
   getCategoryDisplayName,
@@ -15,11 +10,20 @@ import {
   supabase,
   type EpisodePublic,
 } from '@/src/lib/supabase';
+import {
+  MAPBOX_DARK_STYLE,
+  MAPBOX_TOKEN,
+  createPinElement,
+  hidePoiLayers,
+  type LatLng,
+} from '@/src/lib/mapbox';
 
-const SHINJUKU_CENTER = { lat: 35.6896, lng: 139.6917 };
+const SHINJUKU_CENTER: LatLng = { lat: 35.6896, lng: 139.6917 };
 const FLY_TO_ZOOM = 16;
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+if (MAPBOX_TOKEN) {
+  mapboxgl.accessToken = MAPBOX_TOKEN;
+}
 
 /** 通報理由の選択肢 */
 const REPORT_REASONS = [
@@ -322,13 +326,13 @@ export default function MapView({
   isAdmin?: boolean;
 }) {
   const isPostMode = mode === 'post';
-  const [selectedPosition, setSelectedPosition] = useState<google.maps.LatLngLiteral | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<LatLng | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [episodeBody, setEpisodeBody] = useState('');
   const [episodeCategory, setEpisodeCategory] = useState<string>(EPISODE_CATEGORIES[0].value);
   const [episodeEventYear, setEpisodeEventYear] = useState('');
   const [episodes, setEpisodes] = useState<EpisodePublic[]>([]);
-  const [episodePositions, setEpisodePositions] = useState<Record<string, google.maps.LatLngLiteral>>({});
+  const [episodePositions, setEpisodePositions] = useState<Record<string, LatLng>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [selectedEpisodeIdForFly, setSelectedEpisodeIdForFly] = useState<string | null>(null);
@@ -337,7 +341,8 @@ export default function MapView({
   const [wardName, setWardName] = useState<string | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [openInfoEpisodeId, setOpenInfoEpisodeId] = useState<string | null>(null);
-  const posCacheRef = useRef<globalThis.Map<string, google.maps.LatLngLiteral>>(
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
+  const posCacheRef = useRef<globalThis.Map<string, LatLng>>(
     new globalThis.Map()
   );
 
@@ -365,7 +370,7 @@ export default function MapView({
 
   useEffect(() => {
     if (isAdmin) {
-      const next: Record<string, google.maps.LatLngLiteral> = {};
+      const next: Record<string, LatLng> = {};
       for (const ep of episodes as EpisodeAdmin[]) {
         if (ep.actual_latitude == null || ep.actual_longitude == null) continue;
         next[ep.id] = { lat: ep.actual_latitude, lng: ep.actual_longitude };
@@ -376,7 +381,7 @@ export default function MapView({
 
     let cancelled = false;
     (async () => {
-      const next: Record<string, google.maps.LatLngLiteral> = {};
+      const next: Record<string, LatLng> = {};
       const cache = posCacheRef.current;
       for (const ep of episodes) {
         const key = municipalityKey(ep);
@@ -421,9 +426,7 @@ export default function MapView({
     return () => clearTimeout(t);
   }, [selectedEpisodeIdForFly]);
 
-  const handleMapClick = useCallback((e: { detail: { latLng: google.maps.LatLngLiteral | null } }) => {
-    const ll = e.detail.latLng;
-    if (!ll) return;
+  const handleMapClick = useCallback((ll: LatLng) => {
     setSelectedPosition(ll);
     setIsFormOpen(true);
     setEpisodeBody('');
@@ -433,6 +436,20 @@ export default function MapView({
     setWardName(null);
     setIsGeocoding(true);
     setOpenInfoEpisodeId(null);
+  }, []);
+
+  const handleEpisodeMarkerClick = useCallback((episodeId: string) => {
+    setSelectedPosition(null);
+    setIsFormOpen(false);
+    setEpisodeBody('');
+    setReportingEpisodeId(null);
+    setOpenInfoEpisodeId(episodeId);
+  }, []);
+
+  const handleDraftMarkerClick = useCallback(() => {
+    setSelectedPosition(null);
+    setIsFormOpen(false);
+    setEpisodeBody('');
   }, []);
 
   useEffect(() => {
@@ -549,88 +566,31 @@ export default function MapView({
     );
   }
 
-  if (!GOOGLE_MAPS_API_KEY) {
+  if (!MAPBOX_TOKEN) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-50 p-6">
-        <p className="max-w-md text-center font-medium text-red-600">
-          Google Maps の API キーが設定されていません
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-950 p-6">
+        <p className="max-w-md text-center font-medium text-red-400">
+          Mapbox のアクセストークンが設定されていません
         </p>
-        <p className="max-w-md text-center text-sm text-zinc-600">
-          .env.local に NEXT_PUBLIC_GOOGLE_MAPS_API_KEY を設定してください。
-        </p>
-      </div>
-    );
-  }
-
-  if (!process.env.NEXT_PUBLIC_MAP_ID?.trim()) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-50 p-6">
-        <p className="max-w-md text-center font-medium text-red-600">
-          Google Maps の Map ID が設定されていません
-        </p>
-        <p className="max-w-md text-center text-sm text-zinc-600">
-          Vercel / .env.local に NEXT_PUBLIC_MAP_ID を設定してください（ベクターマップ・Advanced Marker に必要です）。
+        <p className="max-w-md text-center text-sm text-zinc-400">
+          .env.local に NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN を設定してください。
         </p>
       </div>
     );
   }
 
   return (
-    <div className="relative h-full w-full">
-      <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['marker']}>
-        <Map
-          mapId={process.env.NEXT_PUBLIC_MAP_ID}
-          defaultCenter={SHINJUKU_CENTER}
-          defaultZoom={12}
-          className="h-full w-full"
-          gestureHandling="greedy"
-          mapTypeControl={false}
-          streetViewControl={false}
-          fullscreenControl={false}
-          onClick={isPostMode ? handleMapClick : undefined}
-          style={{ width: '100%', height: '100%' }}
-        >
-          {episodes.map((ep) => {
-            const pos = episodePositions[ep.id];
-            if (!pos) return null;
-            const pin = categoryPinColors(ep.category);
-            return (
-              <React.Fragment key={ep.id}>
-                <AdvancedMarker
-                  position={pos}
-                  onClick={() => {
-                    setSelectedPosition(null);
-                    setIsFormOpen(false);
-                    setEpisodeBody('');
-                    setReportingEpisodeId(null);
-                    setOpenInfoEpisodeId(ep.id);
-                  }}
-                >
-                  <Pin
-                    background={pin.background}
-                    borderColor={MARKER_BORDER}
-                    glyphColor={pin.glyphColor}
-                  />
-                </AdvancedMarker>
-              </React.Fragment>
-            );
-          })}
-
-          {isPostMode && selectedPosition && (
-            <>
-              <AdvancedMarker
-                position={selectedPosition}
-                onClick={() => {
-                  setSelectedPosition(null);
-                  setIsFormOpen(false);
-                  setEpisodeBody('');
-                }}
-              >
-                <Pin background="#4b0082" borderColor="#1a1a1a" glyphColor="#f4f4f5" />
-              </AdvancedMarker>
-            </>
-          )}
-        </Map>
+    <div className="relative h-full w-full bg-zinc-950">
+      <MapboxViewport
+        isPostMode={isPostMode}
+        episodes={episodes}
+        episodePositions={episodePositions}
+        selectedPosition={selectedPosition}
+        onEmptyMapClick={handleMapClick}
+        onEpisodeMarkerClick={handleEpisodeMarkerClick}
+        onDraftMarkerClick={handleDraftMarkerClick}
+        onMapReady={setMapInstance}
+      />
         {isPostMode && selectedPosition && !isFormOpen && !submitSuccess && (
           <div className="absolute bottom-4 left-4 z-[1200] w-[calc(100%-1rem)] max-w-[420px] rounded border border-zinc-700 bg-zinc-950/95 p-3 shadow-xl">
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-300">記録を追加</p>
@@ -724,29 +684,183 @@ export default function MapView({
             </div>
           </div>
         )}
-        <BoundsListPanelWrapper
+        <BoundsListPanel
+          map={mapInstance}
           episodes={episodes}
           episodePositions={episodePositions}
           onSelectEpisode={handleListSelectEpisode}
           selectedEpisodeIdForFly={selectedEpisodeIdForFly}
         />
-      </APIProvider>
     </div>
   );
 }
 
-function BoundsListPanelWrapper({
+function MapboxViewport({
+  isPostMode,
+  episodes,
+  episodePositions,
+  selectedPosition,
+  onEmptyMapClick,
+  onEpisodeMarkerClick,
+  onDraftMarkerClick,
+  onMapReady,
+}: {
+  isPostMode: boolean;
+  episodes: EpisodePublic[];
+  episodePositions: Record<string, LatLng>;
+  selectedPosition: LatLng | null;
+  onEmptyMapClick: (ll: LatLng) => void;
+  onEpisodeMarkerClick: (episodeId: string) => void;
+  onDraftMarkerClick: () => void;
+  onMapReady: (map: mapboxgl.Map | null) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const episodeMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const draftMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const ignoreMapClickUntilRef = useRef(0);
+  const [mapReady, setMapReady] = useState(false);
+
+  const onEmptyMapClickRef = useRef(onEmptyMapClick);
+  const onEpisodeMarkerClickRef = useRef(onEpisodeMarkerClick);
+  const onDraftMarkerClickRef = useRef(onDraftMarkerClick);
+  const isPostModeRef = useRef(isPostMode);
+
+  useEffect(() => {
+    onEmptyMapClickRef.current = onEmptyMapClick;
+  }, [onEmptyMapClick]);
+  useEffect(() => {
+    onEpisodeMarkerClickRef.current = onEpisodeMarkerClick;
+  }, [onEpisodeMarkerClick]);
+  useEffect(() => {
+    onDraftMarkerClickRef.current = onDraftMarkerClick;
+  }, [onDraftMarkerClick]);
+  useEffect(() => {
+    isPostModeRef.current = isPostMode;
+  }, [isPostMode]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: MAPBOX_DARK_STYLE,
+      center: [SHINJUKU_CENTER.lng, SHINJUKU_CENTER.lat],
+      zoom: 12,
+      attributionControl: true,
+      pitchWithRotate: false,
+      dragRotate: false,
+      touchPitch: false,
+    });
+    mapRef.current = map;
+
+    const applyDarkWorld = () => {
+      hidePoiLayers(map);
+    };
+    map.on('load', () => {
+      applyDarkWorld();
+      setMapReady(true);
+    });
+    map.on('style.load', applyDarkWorld);
+
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left');
+
+    map.on('click', (e) => {
+      if (Date.now() < ignoreMapClickUntilRef.current) return;
+      const target = e.originalEvent.target as HTMLElement | null;
+      if (target?.closest('.memory-map-pin')) return;
+      if (!isPostModeRef.current) return;
+      onEmptyMapClickRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    });
+
+    const ro = new ResizeObserver(() => {
+      map.resize();
+    });
+    ro.observe(containerRef.current);
+    onMapReady(map);
+
+    return () => {
+      ro.disconnect();
+      setMapReady(false);
+      episodeMarkersRef.current.forEach((m) => m.remove());
+      episodeMarkersRef.current = [];
+      draftMarkerRef.current?.remove();
+      draftMarkerRef.current = null;
+      map.remove();
+      mapRef.current = null;
+      onMapReady(null);
+    };
+  }, [onMapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    episodeMarkersRef.current.forEach((m) => m.remove());
+    episodeMarkersRef.current = [];
+
+    for (const ep of episodes) {
+      const pos = episodePositions[ep.id];
+      if (!pos) continue;
+      const colors = categoryPinColors(ep.category);
+      const el = createPinElement({
+        background: colors.background,
+        borderColor: MARKER_BORDER,
+        glyphColor: colors.glyphColor,
+        title: getCategoryDisplayName(ep.category),
+      });
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        ignoreMapClickUntilRef.current = Date.now() + 300;
+        onEpisodeMarkerClickRef.current(ep.id);
+      });
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([pos.lng, pos.lat])
+        .addTo(map);
+      episodeMarkersRef.current.push(marker);
+    }
+  }, [mapReady, episodes, episodePositions]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    draftMarkerRef.current?.remove();
+    draftMarkerRef.current = null;
+    if (!isPostMode || !selectedPosition) return;
+
+    const el = createPinElement({
+      background: '#4b0082',
+      borderColor: '#1a1a1a',
+      glyphColor: '#f4f4f5',
+      title: '投稿地点',
+    });
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      ignoreMapClickUntilRef.current = Date.now() + 300;
+      onDraftMarkerClickRef.current();
+    });
+    draftMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([selectedPosition.lng, selectedPosition.lat])
+      .addTo(map);
+  }, [mapReady, isPostMode, selectedPosition]);
+
+  return <div ref={containerRef} className="absolute inset-0" />;
+}
+
+function BoundsListPanel({
+  map,
   episodes,
   episodePositions,
   onSelectEpisode,
   selectedEpisodeIdForFly,
 }: {
+  map: mapboxgl.Map | null;
   episodes: EpisodePublic[];
-  episodePositions: Record<string, google.maps.LatLngLiteral>;
+  episodePositions: Record<string, LatLng>;
   onSelectEpisode: (ep: EpisodePublic) => void;
   selectedEpisodeIdForFly: string | null;
 }) {
-  const map = useMap();
   const [boundsEpisodes, setBoundsEpisodes] = useState<EpisodePublic[]>([]);
 
   useEffect(() => {
@@ -757,16 +871,16 @@ function BoundsListPanelWrapper({
       const inBounds = episodes.filter((ep) => {
         const p = episodePositions[ep.id];
         if (!p) return false;
-        return b.contains(p);
+        return b.contains([p.lng, p.lat]);
       });
       setBoundsEpisodes(inBounds);
     };
     updateBounds();
-    const listener = map.addListener('idle', updateBounds);
+    map.on('idle', updateBounds);
+    map.on('moveend', updateBounds);
     return () => {
-      if (typeof google !== 'undefined') {
-        google.maps.event.removeListener(listener);
-      }
+      map.off('idle', updateBounds);
+      map.off('moveend', updateBounds);
     };
   }, [map, episodes, episodePositions]);
 
@@ -774,8 +888,7 @@ function BoundsListPanelWrapper({
     (ep: EpisodePublic) => {
       const p = episodePositions[ep.id];
       if (!p || !map) return;
-      map.panTo(p);
-      map.setZoom(FLY_TO_ZOOM);
+      map.flyTo({ center: [p.lng, p.lat], zoom: FLY_TO_ZOOM, essential: true });
       onSelectEpisode(ep);
     },
     [map, onSelectEpisode, episodePositions]

@@ -67,10 +67,6 @@ body {
   filter: brightness(1.2);
 }
 
-.mapbox-fallback .mapboxgl-ctrl-logo {
-  display: none;
-}
-
 /* Mapbox 標準 Popup は使用しない（入力フォーカス喪失防止） */
 .mapboxgl-popup {
   display: none !important;

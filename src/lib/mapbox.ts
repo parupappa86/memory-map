@@ -4,30 +4,10 @@ export type LatLng = { lat: number; lng: number };
 
 export const MAPBOX_DARK_STYLE = 'mapbox://styles/mapbox/dark-v11';
 
-/** トークン未設定時のダークキャンバス（Mapbox タイルは使わない） */
-export const LOCAL_DARK_STYLE = {
-  version: 8 as const,
-  name: 'local-dark-fallback',
-  sources: {
-    'carto-dark': {
-      type: 'raster' as const,
-      tiles: [
-        'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-      ],
-      tileSize: 256,
-      attribution: '© OpenStreetMap © CARTO',
-    },
-  },
-  layers: [
-    {
-      id: 'carto-dark',
-      type: 'raster' as const,
-      source: 'carto-dark',
-    },
-  ],
-};
-
-export const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
+export const MAPBOX_TOKEN =
+  process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim() ||
+  process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim() ||
+  '';
 
 /** 店舗・施設などの POI レイヤー（dark-v11 の symbol 層） */
 const POI_LAYER_RE = /(^|-)(poi|airport|transit)(-|$)/i;

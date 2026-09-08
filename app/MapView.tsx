@@ -11,7 +11,6 @@ import {
   type EpisodePublic,
 } from '@/src/lib/supabase';
 import {
-  LOCAL_DARK_STYLE,
   MAPBOX_DARK_STYLE,
   MAPBOX_TOKEN,
   createPinElement,
@@ -24,10 +23,6 @@ const FLY_TO_ZOOM = 16;
 
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
-} else {
-  // カスタムダークスタイルのみ使う場合、Mapbox セッション認証でキャンバスが消されないようにする
-  mapboxgl.config.REQUIRE_ACCESS_TOKEN = false;
-  mapboxgl.config.API_URL = '';
 }
 
 /** 通報理由の選択肢 */
@@ -571,13 +566,21 @@ export default function MapView({
     );
   }
 
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-zinc-950 p-6">
+        <p className="max-w-md text-center font-medium text-red-400">
+          Mapbox のアクセストークンが設定されていません
+        </p>
+        <p className="max-w-md text-center text-sm text-zinc-400">
+          .env.local または Vercel に NEXT_PUBLIC_MAPBOX_TOKEN（または NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN）を設定してください。地図スタイルは mapbox://styles/mapbox/dark-v11 です。
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full w-full bg-zinc-950">
-      {!MAPBOX_TOKEN && (
-        <div className="pointer-events-none absolute left-14 top-3 z-[1300] max-w-sm rounded border border-amber-700/80 bg-zinc-950/90 px-3 py-2 text-xs text-amber-200 shadow-lg">
-          NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN が未設定のため、Mapbox dark-v11 の代わりにダークな代替地図を表示しています。
-        </div>
-      )}
       <MapboxViewport
         isPostMode={isPostMode}
         episodes={episodes}
@@ -741,7 +744,7 @@ function MapboxViewport({
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: MAPBOX_TOKEN ? MAPBOX_DARK_STYLE : LOCAL_DARK_STYLE,
+      style: MAPBOX_DARK_STYLE,
       center: [SHINJUKU_CENTER.lng, SHINJUKU_CENTER.lat],
       zoom: 12,
       attributionControl: true,
@@ -842,12 +845,7 @@ function MapboxViewport({
       .addTo(map);
   }, [mapReady, isPostMode, selectedPosition]);
 
-  return (
-    <div
-      ref={containerRef}
-      className={`absolute inset-0 ${MAPBOX_TOKEN ? '' : 'mapbox-fallback'}`}
-    />
-  );
+  return <div ref={containerRef} className="absolute inset-0" />;
 }
 
 function BoundsListPanel({

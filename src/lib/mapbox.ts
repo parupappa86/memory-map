@@ -1,0 +1,81 @@
+import type { ExpressionSpecification, Map as MapboxMap } from 'mapbox-gl';
+
+export type LatLng = { lat: number; lng: number };
+
+export const MAPBOX_DARK_STYLE = 'mapbox://styles/mapbox/dark-v11';
+
+export const MAPBOX_TOKEN =
+  process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim() ||
+  process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim() ||
+  '';
+
+/** 店舗・施設などの POI レイヤー（dark-v11 の symbol 層） */
+const POI_LAYER_RE = /(^|-)(poi|airport|transit)(-|$)/i;
+
+export function hidePoiLayers(map: MapboxMap): void {
+  const layers = map.getStyle()?.layers;
+  if (!layers) return;
+  for (const layer of layers) {
+    if (layer.type !== 'symbol') continue;
+    if (!POI_LAYER_RE.test(layer.id)) continue;
+    if (map.getLayer(layer.id)) {
+      map.setLayoutProperty(layer.id, 'visibility', 'none');
+    }
+  }
+}
+
+const JA_TEXT_FIELD: ExpressionSpecification = [
+  'coalesce',
+  ['get', 'name_ja'],
+  ['get', 'name'],
+];
+
+/** 道路名・地名ラベルを日本語（name_ja）優先にする */
+export function applyJapaneseLabels(map: MapboxMap): void {
+  if (typeof map.setLanguage === 'function') {
+    try {
+      map.setLanguage('ja');
+    } catch {
+      /* classic style では未対応の場合がある */
+    }
+  }
+
+  const layers = map.getStyle()?.layers;
+  if (!layers) return;
+  for (const layer of layers) {
+    if (layer.type !== 'symbol') continue;
+    if (!map.getLayer(layer.id)) continue;
+    let current: unknown;
+    try {
+      current = map.getLayoutProperty(layer.id, 'text-field');
+    } catch {
+      continue;
+    }
+    if (current == null) continue;
+    const serialized = JSON.stringify(current);
+    if (!serialized.includes('name')) continue;
+    try {
+      map.setLayoutProperty(layer.id, 'text-field', JA_TEXT_FIELD);
+    } catch {
+      /* text-field を書き換えられないレイヤーはスキップ */
+    }
+  }
+}
+
+export function createPinElement(options: {
+  background: string;
+  borderColor: string;
+  glyphColor: string;
+  title?: string;
+}): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'memory-map-pin';
+  if (options.title) el.title = options.title;
+  el.setAttribute('role', 'button');
+  el.innerHTML = `<svg viewBox="0 0 24 36" width="28" height="36" aria-hidden="true">
+    <path d="M12 1.5C6.2 1.5 1.5 6.2 1.5 12c0 8.4 10.5 22 10.5 22s10.5-13.6 10.5-22C22.5 6.2 17.8 1.5 12 1.5z"
+      fill="${options.background}" stroke="${options.borderColor}" stroke-width="1.6"/>
+    <circle cx="12" cy="12" r="3.6" fill="${options.glyphColor}"/>
+  </svg>`;
+  return el;
+}

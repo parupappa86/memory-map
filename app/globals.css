@@ -40,7 +40,34 @@ body {
   font-family: var(--font-serif-jp), "Yu Mincho", "Hiragino Mincho ProN", serif;
 }
 
-/* Google Maps: 地名をやや落ち着かせる（任意） */
-.gm-style {
-  filter: saturate(0.85) contrast(1);
+/* Mapbox GL: ダーク地図キャンバスと自前ピン */
+.mapboxgl-map {
+  font: inherit;
+  width: 100%;
+  height: 100%;
+}
+
+.mapboxgl-ctrl-attrib {
+  background: rgba(9, 9, 11, 0.65) !important;
+  color: #a1a1aa;
+}
+
+.mapboxgl-ctrl-attrib a {
+  color: #d4d4d8;
+}
+
+.memory-map-pin {
+  cursor: pointer;
+  width: 28px;
+  height: 36px;
+  transform-origin: bottom center;
+}
+
+.memory-map-pin:hover {
+  filter: brightness(1.2);
+}
+
+/* Mapbox 標準 Popup は使用しない（入力フォーカス喪失防止） */
+.mapboxgl-popup {
+  display: none !important;
 }

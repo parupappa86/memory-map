@@ -39,7 +39,7 @@ export type Episode = {
   created_at?: string;
 };
 
-/** 地図閲覧・一覧用（正確な座標は含めない） */
+/** 地図閲覧・一覧用。公開座標は latitude/longitude（なければ lat/lng） */
 export type EpisodePublic = {
   id: string;
   content: string;
@@ -48,7 +48,105 @@ export type EpisodePublic = {
   created_at?: string;
   city_name: string | null;
   ward_name: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  lat?: number | null;
+  lng?: number | null;
+  actual_latitude?: number | null;
+  actual_longitude?: number | null;
 };
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+export function episodeBodyText(ep: {
+  content?: string | null;
+  story?: string | null;
+}): string {
+  return String(ep.content ?? ep.story ?? '');
+}
+
+/** 公開ピン座標: SPEC の latitude/longitude を優先し、旧カラム lat/lng にフォールバック */
+export function episodePublicLatLng(ep: EpisodePublic): { lat: number; lng: number } | null {
+  const lat = toFiniteNumber(ep.latitude) ?? toFiniteNumber(ep.lat);
+  const lng = toFiniteNumber(ep.longitude) ?? toFiniteNumber(ep.lng);
+  if (lat == null || lng == null) return null;
+  return { lat, lng };
+}
+
+export function resolveEpisodePosition(
+  ep: EpisodePublic,
+  isAdmin: boolean
+): { lat: number; lng: number } | null {
+  if (isAdmin) {
+    const alat = toFiniteNumber(ep.actual_latitude);
+    const alng = toFiniteNumber(ep.actual_longitude);
+    if (alat != null && alng != null) return { lat: alat, lng: alng };
+  }
+  return episodePublicLatLng(ep);
+}
+
+function normalizeEpisodeRow(row: Record<string, unknown>): EpisodePublic {
+  const yearRaw = row.year;
+  const year =
+    typeof yearRaw === 'string' || typeof yearRaw === 'number' ? String(yearRaw) : '';
+  const eventDate =
+    (typeof row.event_date === 'string' && row.event_date) ||
+    (/^\d{4}$/.test(year) ? `${year}-01-01` : null);
+  const address = typeof row.address === 'string' ? row.address : null;
+  return {
+    id: String(row.id),
+    content: episodeBodyText(row as { content?: string | null; story?: string | null }),
+    category: row.category != null ? String(row.category) : '',
+    event_date: eventDate,
+    created_at: typeof row.created_at === 'string' ? row.created_at : undefined,
+    city_name: row.city_name != null ? String(row.city_name) : address,
+    ward_name: row.ward_name != null ? String(row.ward_name) : null,
+    latitude: toFiniteNumber(row.latitude),
+    longitude: toFiniteNumber(row.longitude),
+    lat: toFiniteNumber(row.lat),
+    lng: toFiniteNumber(row.lng),
+    actual_latitude: toFiniteNumber(row.actual_latitude),
+    actual_longitude: toFiniteNumber(row.actual_longitude),
+  };
+}
+
+const EPISODE_SELECTS = [
+  'id, content, story, category, event_date, year, created_at, city_name, ward_name, address, latitude, longitude, lat, lng',
+  'id, content, category, event_date, created_at, city_name, ward_name, latitude, longitude',
+  'id, content, category, event_date, created_at, city_name, ward_name, lat, lng',
+  'id, content, category, event_date, created_at, city_name, ward_name',
+] as const;
+
+/** episodes テーブルから地図用投稿を取得（スキーマ差を吸収） */
+export async function fetchMapEpisodes(isAdmin: boolean): Promise<EpisodePublic[]> {
+  if (!supabase) return [];
+  const adminVariants = isAdmin
+    ? [', actual_latitude, actual_longitude', '']
+    : [''];
+  for (const adminCols of adminVariants) {
+    for (const cols of EPISODE_SELECTS) {
+      const query = `${cols}${adminCols}`;
+      const { data, error } = await supabase
+        .from('episodes')
+        .select(query as '*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        return (data as unknown as Record<string, unknown>[]).map(normalizeEpisodeRow);
+      }
+      if (error) {
+        console.warn('[episodes] select 失敗、次のカラムセットを試します:', error.message);
+      }
+    }
+  }
+  return [];
+}
 
 export const EPISODE_CATEGORIES = [
   { value: '不思議な体験', label: '🌫️ 不思議な体験' },
@@ -63,16 +161,10 @@ export function getCategoryDisplayName(category: string): string {
   return found ? found.label : category;
 }
 
-/** 最新のエピソードを取得（公開用・座標は含まない） */
+/** 最新のエピソードを取得 */
 export async function getLatestEpisodes(
   limit: number
 ): Promise<EpisodePublic[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('episodes')
-    .select('id, content, category, event_date, created_at, city_name, ward_name')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error || !data) return [];
-  return data as EpisodePublic[];
+  const all = await fetchMapEpisodes(false);
+  return all.slice(0, limit);
 }

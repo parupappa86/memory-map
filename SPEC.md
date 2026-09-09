@@ -1,49 +1,143 @@
-# 【技術仕様書】実録・怪談アーカイブマップ（[SPEC.md](http://SPEC.md)）
+# 実録・怪談アーカイブマップ 仕様書 ([SPEC.md](http://SPEC.md))
 
-## 1. システム概要 & 技術スタック
+## 1. プロジェクト概要
 
-- Framework: Next.js (App Router, TypeScript, Tailwind CSS)
-- Database / Backend: Supabase (PostgreSQL)
-- Map Engine: Mapbox GL JS (ダークテーマ)
-- Geocoding: Mapbox Geocoding API (町名・丁目レベル取得)
+- **システム名称**: 実録・怪談アーカイブマップ
 
-## 2. 画面構成 & ルーティング
+- **システム概要**: 日本全国の実録恐怖体験・怪異を地図上に記録・共有するWebプラットフォーム。
 
-- `/` : ランディングページ（単一CTA「怪談マップに入る」で `/map` へ誘導）
-- `/map` : 統合マップ画面（Mapbox地図、ピン閲覧、地域ドロワー、即時投稿、ログイン、マイページ）
-- `/admin/map` : 実座標プロットマップ`actual_latitude`, `actual_longitude` 表示 / AdminGuard保護）
-- `/admin/reports` : 通報管理画面（通報投稿の非表示・削除 / AdminGuard保護）
+- **主要目的**:
 
-## 3. データベース設計要件
+  - ダークな世界観（Mapbox）による没入感の提供。
 
-- `posts` テーブル:
-  - `id`: int8 generated always as identity primary key（UI表示は `#001` 形式）
-  - `user_id`: uuid nullable（未ログイン投稿を許容）
-  - `category`: text not null
-  - `event_year`: text not null（4桁西暦）
-  - `content`: text not null
-  - `lat`, `lng`: float8 not null（公開用：町名・丁目代表座標）
-  - `actual_latitude`, `actual_longitude`: float8 not null（実座標）
-  - `pref_name`, `city_name`, `town_name`: text（住所情報）
-  - `like_count`: int4 default 0 not null
-  - `is_deleted`: boolean default false not null
-- `users` テーブル:
-  - `id`: uuid default gen_random_uuid() primary key
-  - `username`: text unique not null（メアド不要）
-  - `password_hash`: text not null
-- `likes` テーブル:
-  - `id`: uuid default gen_random_uuid() primary key
-  - `user_id`: uuid references public.users(id) on delete cascade
-  - `post_id`: int8 references public.posts(id) on delete cascade
-  - `unique(user_id, post_id)`
+  - 町名・丁目単位への集約による「リアリティ」と「個人のプライバシー保護」の両立。
 
+  - メアド不要の簡易アカウントと未ログイン投稿許容による、参加ハードルの徹底排除。
 
+---
 
-## 4. UI/UX & 実装ルール
+## 2. 開発・運用ツール環境
 
-- 地図空きエリアタップで即時投稿フォーム（自前 `div` オーバーレイ）表示。
-- Google Maps / Mapbox 標準のポップアップは使用禁止（フォーカス喪失バグ防止のため独立自前UI限定）。
-- 体験時期（年）は全角→半角変換、数字以外除去、4桁超過即時カット`slice(0, 4)`）。
-- ピンタップ時はサイドメニュー（ドロワー）で地域内エピソードを展開（「最新順」「いいね順」ソート）。
-- 管理画面は `ADMIN_PASSWORD` と Cookie による認証を維持。
+| カテゴリ | ツール・技術 | バージョン/プラン | 主な役割・用途 |
 
+| :--- | :--- | :--- | :--- |
+
+| 開発エディタ | Cursor | 最新版 | AIエージェントによるコード生成、Composerによる複数ファイル管理 |
+
+| ソースコード管理 | Git | - | 開発履歴の追跡、変更差分・コミット管理 |
+
+| リモートリポジトリ | GitHub | - | ソースコード保管、Cursor連携・バックアップ |
+
+| フロントエンド | Next.js | 16.1.6 (Turbopack) | App Routerを用いたページ描画およびAPIルート構築 |
+
+| 開発言語 | TypeScript | - | 静的型付けによる堅牢な実装 |
+
+| 地図エンジン | Mapbox GL JS | v3系 | ダークテーマ地図描画、ピンレンダリング、空間UI制御 |
+
+| BaaS / DB | Supabase | 無料枠 | PostgreSQL（投稿データ `episodes`、認証、カウント集計） |
+
+| ホスティング | Vercel | Hobby | CI/CD自動デプロイ、プレビュー環境提供 |
+
+---
+
+## 3. 画面一覧・URL構造
+
+- `/` : **トップページ**（サービス概要、利用規約、免責事項、マップ遷移CTA）
+
+- `/map` : **統合マップ画面**（メイン画面。ダーク地図、ピン閲覧、地域ドロワー、ワンタップ投稿）
+
+- `/admin/map` : **管理者マップ**（投稿者が実際にタップした実座標ピンの分析画面）
+
+- `/admin/reports` : **通報管理画面**（通報一覧の確認、削除・非表示対応）
+
+---
+
+## 4. 機能・セキュリティ要件
+
+### 4.1 地図・位置情報仕様
+
+- **地図スタイル**: `mapbox://styles/mapbox/dark-v11`（店舗等の不要なPOIは非表示）。
+
+- **地名言語**: 日本国内の地名ラベルは日本語`name_ja`）を優先表示。
+
+- **公開ピンの住所粒度**:
+
+  - 町名・大字・丁目単位（例：東京都新宿区歌舞伎町一丁目付近）へ集約。
+
+  - 番地・号・建物名などの正確な地点にはピンを置かない。
+
+### 4.2 セキュリティ・コスト防止仕様（Mapbox制御）
+
+- **トークン保護（URL restrictions）**:
+
+  - 許可URL`http://localhost:3000`, `http://localhost:3001`, `https://*.vercel.app` 等）からのみリクエストを承認。
+
+  - 外部からのトークン盗用・不正課金を完全遮断。
+
+- **利用量アラート通知**:
+
+  - Mapboxダッシュボードにて月間40,000回（無料枠の80%）到達時のメール通知を設定。
+
+- **サイト側アクセス上限リミッター（課金完全防止ガード）**:
+
+  - 当月のマップロード数が 49,000 回に達した時点で、新規のMapbox初期化を停止。
+
+  - 上限到達時は「今月の閲覧上限に達したため一時停止中」のメンテナンス案内を表示。
+
+### 4.3 閲覧・地域ドロワー（サイドメニュー）
+
+- **ピンタップ時の挙動**: 画面端（PC：右サイドバー／スマホ：下部ドロワー）から該当エリアの記録一覧を展開。
+
+- **並び順**: 「最新順」「いいね順」で切り替え可能。
+
+- **表示項目**: 管理番号`#001` ゼロ埋め3桁形式）、カテゴリ、発生年、投稿者名（未ログインは「匿名」）、本文、いいねボタン、SNSシェアボタン。
+
+### 4.4 投稿機能（EFO・自前UI）
+
+- **ワンタップ投稿**: 地図の空き地点タップで仮ピンを立て、自前オーバーレイ`div`）でフォームを表示。
+
+- **フォーカス維持**: Mapbox標準Popupは使用せず、自前UIにより入力中のフォーカス喪失を防止。
+
+- **入力項目・バリデーション**:
+
+  - 怪異の種別（選択式）
+
+  - 体験時期（全角は半角変換、数字以外除去、4桁制限）
+
+  - 体験内容（自由記述）
+
+- **プライバシー表記**: 町名・丁目付近への集約配置に関する安心メッセージを明記。
+
+- **ログイン連携**: ログイン時は `user_id` を紐付け、未ログイン時は `user_id` は空で「匿名」固定。
+
+### 4.5 管理者機能
+
+- **アクセス制御**: `/admin/` 配下は `AdminGuard` コンポーネントおよび認証（Cookie）で保護。
+
+- **実座標マップ**: ユーザーが実際にタップした生座標`actual_latitude`, `actual_longitude`）でピン描画。
+
+- **通報管理**: 通報投稿の一覧確認、非表示・削除処理。相互リンクナビゲーション設置。
+
+---
+
+## 5. データ構造（Supabase）
+
+- **users**: `id` (UUID, PK), `username`, `password_hash`, `created_at`
+
+- **episodes**:
+
+  - `id` (連番、画面表示時は `#001` 形式)
+
+  - `user_id` (UUID, FK, 任意)
+
+  - `category`, `year`, `story`
+
+  - `latitude` / `longitude`（公開用・代表点座標）
+
+  - `actual_latitude` / `actual_longitude`（実座標・生タップ位置）
+
+  - `address`（町名・丁目までの住所文字列）
+
+  - `likes_count`, `is_reported`, `is_deleted`, `created_at`
+
+- **likes**: `id`, `user_id`, `episode_id`, `created_at`（同一ユーザー・エピソードの重複不可制約）

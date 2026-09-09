@@ -1,4 +1,4 @@
-import type { Map as MapboxMap } from 'mapbox-gl';
+import type { ExpressionSpecification, Map as MapboxMap } from 'mapbox-gl';
 
 export type LatLng = { lat: number; lng: number };
 
@@ -20,6 +20,44 @@ export function hidePoiLayers(map: MapboxMap): void {
     if (!POI_LAYER_RE.test(layer.id)) continue;
     if (map.getLayer(layer.id)) {
       map.setLayoutProperty(layer.id, 'visibility', 'none');
+    }
+  }
+}
+
+const JA_TEXT_FIELD: ExpressionSpecification = [
+  'coalesce',
+  ['get', 'name_ja'],
+  ['get', 'name'],
+];
+
+/** 道路名・地名ラベルを日本語（name_ja）優先にする */
+export function applyJapaneseLabels(map: MapboxMap): void {
+  if (typeof map.setLanguage === 'function') {
+    try {
+      map.setLanguage('ja');
+    } catch {
+      /* classic style では未対応の場合がある */
+    }
+  }
+
+  const layers = map.getStyle()?.layers;
+  if (!layers) return;
+  for (const layer of layers) {
+    if (layer.type !== 'symbol') continue;
+    if (!map.getLayer(layer.id)) continue;
+    let current: unknown;
+    try {
+      current = map.getLayoutProperty(layer.id, 'text-field');
+    } catch {
+      continue;
+    }
+    if (current == null) continue;
+    const serialized = JSON.stringify(current);
+    if (!serialized.includes('name')) continue;
+    try {
+      map.setLayoutProperty(layer.id, 'text-field', JA_TEXT_FIELD);
+    } catch {
+      /* text-field を書き換えられないレイヤーはスキップ */
     }
   }
 }

@@ -5,14 +5,18 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {
   EPISODE_CATEGORIES,
+  episodeBodyText,
+  fetchMapEpisodes,
   getCategoryDisplayName,
   getSupabaseError,
+  resolveEpisodePosition,
   supabase,
   type EpisodePublic,
 } from '@/src/lib/supabase';
 import {
   MAPBOX_DARK_STYLE,
   MAPBOX_TOKEN,
+  applyJapaneseLabels,
   createPinElement,
   hidePoiLayers,
   type LatLng,
@@ -49,11 +53,6 @@ type PostFormOverlayProps = {
   onYearChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
-};
-
-type EpisodeAdmin = EpisodePublic & {
-  actual_latitude: number | null;
-  actual_longitude: number | null;
 };
 
 function normalizeYearInput(value: string): string {
@@ -193,8 +192,9 @@ function formatDate(isoOrDate: string | undefined | null): string {
 
 function formatEventDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
+  if (/^\d{4}$/.test(dateStr)) return dateStr;
   const [y, m, d] = dateStr.split('-');
-  if (!y || !m || !d) return '—';
+  if (!y || !m || !d) return y || '—';
   return `${y}/${m}/${d}`;
 }
 
@@ -348,46 +348,39 @@ export default function MapView({
 
   useEffect(() => {
     if (!supabase) return;
-    const client = supabase;
-    async function fetchEpisodes() {
-      if (isAdmin) {
-        const { data, error } = await client
-          .from('episodes')
-          .select('id, content, category, event_date, created_at, city_name, ward_name, actual_latitude, actual_longitude')
-          .order('created_at', { ascending: false });
-        if (!error && data) setEpisodes(data as unknown as EpisodePublic[]);
-        return;
-      }
-
-      const { data, error } = await client
-        .from('episodes')
-        .select('id, content, category, event_date, created_at, city_name, ward_name')
-        .order('created_at', { ascending: false });
-      if (!error && data) setEpisodes(data as EpisodePublic[]);
-    }
-    fetchEpisodes();
+    let cancelled = false;
+    (async () => {
+      const rows = await fetchMapEpisodes(isAdmin);
+      if (!cancelled) setEpisodes(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isAdmin]);
 
   useEffect(() => {
-    if (isAdmin) {
-      const next: Record<string, LatLng> = {};
-      for (const ep of episodes as EpisodeAdmin[]) {
-        if (ep.actual_latitude == null || ep.actual_longitude == null) continue;
-        next[ep.id] = { lat: ep.actual_latitude, lng: ep.actual_longitude };
+    const next: Record<string, LatLng> = {};
+    const needGeocode: EpisodePublic[] = [];
+    for (const ep of episodes) {
+      const pos = resolveEpisodePosition(ep, isAdmin);
+      if (pos) {
+        next[ep.id] = pos;
+      } else if (!isAdmin) {
+        needGeocode.push(ep);
       }
-      setEpisodePositions(next);
-      return;
     }
+    setEpisodePositions(next);
+    if (isAdmin || needGeocode.length === 0) return;
 
     let cancelled = false;
     (async () => {
-      const next: Record<string, LatLng> = {};
+      const geocoded: Record<string, LatLng> = {};
       const cache = posCacheRef.current;
-      for (const ep of episodes) {
+      for (const ep of needGeocode) {
         const key = municipalityKey(ep);
         if (!key) continue;
         if (cache.has(key)) {
-          next[ep.id] = cache.get(key)!;
+          geocoded[ep.id] = cache.get(key)!;
           continue;
         }
         const q = forwardGeocodeQuery(ep);
@@ -399,17 +392,14 @@ export default function MapView({
           if (data.lat != null && data.lng != null) {
             const pos = { lat: data.lat, lng: data.lng };
             cache.set(key, pos);
-            next[ep.id] = pos;
+            geocoded[ep.id] = pos;
           }
         } catch {
           /* スキップ */
         }
       }
-      if (!cancelled) {
-        setEpisodePositions((prev) => {
-          const merged = { ...prev, ...next };
-          return merged;
-        });
+      if (!cancelled && Object.keys(geocoded).length > 0) {
+        setEpisodePositions((prev) => ({ ...prev, ...geocoded }));
       }
     })();
     return () => {
@@ -510,31 +500,78 @@ export default function MapView({
       if (!supabase) return;
       setIsSubmitting(true);
       const eventDate = episodeEventYear.trim() ? `${episodeEventYear.trim()}-01-01` : null;
-      const { data, error } = await supabase
+      const payload = {
+        content: episodeBody.trim(),
+        lat,
+        lng,
+        latitude: lat,
+        longitude: lng,
+        actual_latitude: lat,
+        actual_longitude: lng,
+        city_name: cityName ?? null,
+        ward_name: wardName ?? null,
+        category: episodeCategory,
+        event_date: eventDate,
+      };
+      let savedRow: Record<string, unknown> | null = null;
+      const first = await supabase
         .from('episodes')
-        .insert({
-          content: episodeBody.trim(),
-          lat,
-          lng,
-          actual_latitude: lat,
-          actual_longitude: lng,
-          city_name: cityName ?? null,
-          ward_name: wardName ?? null,
-          category: episodeCategory,
-          event_date: eventDate,
-        })
-        .select('id, content, category, event_date, created_at, city_name, ward_name')
+        .insert(payload)
+        .select('id, content, category, event_date, created_at, city_name, ward_name, latitude, longitude, lat, lng')
         .single();
+      let error = first.error;
+      if (!error && first.data) {
+        savedRow = first.data as Record<string, unknown>;
+      } else {
+        const legacy = {
+          content: payload.content,
+          lat: payload.lat,
+          lng: payload.lng,
+          actual_latitude: payload.actual_latitude,
+          actual_longitude: payload.actual_longitude,
+          city_name: payload.city_name,
+          ward_name: payload.ward_name,
+          category: payload.category,
+          event_date: payload.event_date,
+        };
+        const retry = await supabase
+          .from('episodes')
+          .insert(legacy)
+          .select('id, content, category, event_date, created_at, city_name, ward_name, lat, lng')
+          .single();
+        error = retry.error;
+        if (retry.data) savedRow = retry.data as Record<string, unknown>;
+      }
 
       setIsSubmitting(false);
-      if (error) {
-        const detail = `code: ${error.code}\nmessage: ${error.message}`;
+      if (error || !savedRow) {
+        const detail = error
+          ? `code: ${error.code}\nmessage: ${error.message}`
+          : '保存結果が空です';
         console.error('[MapView] Supabase 投稿エラー:', error);
         alert(`投稿に失敗しました\n\n${detail}`);
         return;
       }
 
-      setEpisodes((prev) => [data as EpisodePublic, ...prev]);
+      const savedId = String(savedRow.id);
+      const pinPos = { lat, lng };
+      setEpisodes((prev) => [
+        {
+          id: savedId,
+          content: episodeBody.trim(),
+          category: episodeCategory,
+          event_date: eventDate,
+          created_at: typeof savedRow.created_at === 'string' ? savedRow.created_at : undefined,
+          city_name: cityName,
+          ward_name: wardName,
+          latitude: lat,
+          longitude: lng,
+          lat,
+          lng,
+        },
+        ...prev,
+      ]);
+      setEpisodePositions((prev) => ({ ...prev, [savedId]: pinPos }));
       setSubmitSuccess(true);
     },
     [selectedPosition, episodeBody, episodeCategory, episodeEventYear, cityName, wardName, isGeocoding]
@@ -648,7 +685,7 @@ export default function MapView({
                 </span>
               </p>
               <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験内容の詳細</p>
-              <p className="whitespace-pre-wrap text-base font-serif">{openInfoEpisode.content}</p>
+              <p className="whitespace-pre-wrap text-base font-serif">{episodeBodyText(openInfoEpisode)}</p>
               <p className="text-base text-zinc-700">
                 <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">体験時期</span>{' '}
                 {formatEventDate(openInfoEpisode.event_date)}
@@ -747,6 +784,7 @@ function MapboxViewport({
       style: MAPBOX_DARK_STYLE,
       center: [SHINJUKU_CENTER.lng, SHINJUKU_CENTER.lat],
       zoom: 12,
+      language: 'ja',
       attributionControl: true,
       pitchWithRotate: false,
       dragRotate: false,
@@ -756,6 +794,7 @@ function MapboxViewport({
 
     const applyDarkWorld = () => {
       hidePoiLayers(map);
+      applyJapaneseLabels(map);
     };
     map.on('load', () => {
       applyDarkWorld();
@@ -921,7 +960,7 @@ function BoundsListPanel({
                   <span className="text-sm text-zinc-500">{formatPostNumber(ep.id)}</span>
                 </span>
                 <br />
-                <span className="font-medium text-zinc-900">{contentPreview(ep.content, 28)}</span>
+                <span className="font-medium text-zinc-900">{contentPreview(episodeBodyText(ep), 28)}</span>
               </button>
             </li>
           ))}

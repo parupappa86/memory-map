@@ -347,10 +347,16 @@ export default function MapView({
   );
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.warn('[episodes] supabase client が未初期化のため取得をスキップします');
+      console.log('取得したエピソードデータ:', []);
+      return;
+    }
     let cancelled = false;
     (async () => {
       const rows = await fetchMapEpisodes(isAdmin);
+      console.log('取得したエピソードデータ:', rows);
+      console.log('取得件数:', rows.length);
       if (!cancelled) setEpisodes(rows);
     })();
     return () => {
@@ -620,6 +626,7 @@ export default function MapView({
     <div className="relative h-full w-full bg-zinc-950">
       <MapboxViewport
         isPostMode={isPostMode}
+        isAdmin={isAdmin}
         episodes={episodes}
         episodePositions={episodePositions}
         selectedPosition={selectedPosition}
@@ -734,6 +741,7 @@ export default function MapView({
 
 function MapboxViewport({
   isPostMode,
+  isAdmin,
   episodes,
   episodePositions,
   selectedPosition,
@@ -743,6 +751,7 @@ function MapboxViewport({
   onMapReady,
 }: {
   isPostMode: boolean;
+  isAdmin: boolean;
   episodes: EpisodePublic[];
   episodePositions: Record<string, LatLng>;
   selectedPosition: LatLng | null;
@@ -833,14 +842,31 @@ function MapboxViewport({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
+    if (!map || !mapReady) {
+      if (episodes.length > 0) {
+        console.log('地図未ロードのためピン描画を待機中', {
+          mapReady,
+          episodeCount: episodes.length,
+        });
+      }
+      return;
+    }
 
     episodeMarkersRef.current.forEach((m) => m.remove());
     episodeMarkersRef.current = [];
 
     for (const ep of episodes) {
-      const pos = episodePositions[ep.id];
-      if (!pos) continue;
+      const pos = episodePositions[ep.id] ?? resolveEpisodePosition(ep, isAdmin);
+      if (!pos) {
+        console.warn('座標なしのためピンをスキップ:', ep.id, {
+          latitude: ep.latitude,
+          longitude: ep.longitude,
+          lat: ep.lat,
+          lng: ep.lng,
+        });
+        continue;
+      }
+      console.log('ピンを描画中:', ep.id, [pos.lng, pos.lat]);
       const colors = categoryPinColors(ep.category);
       const el = createPinElement({
         background: colors.background,
@@ -858,7 +884,8 @@ function MapboxViewport({
         .addTo(map);
       episodeMarkersRef.current.push(marker);
     }
-  }, [mapReady, episodes, episodePositions]);
+    console.log('ピン描画完了:', episodeMarkersRef.current.length, '件');
+  }, [mapReady, episodes, episodePositions, isAdmin]);
 
   useEffect(() => {
     const map = mapRef.current;

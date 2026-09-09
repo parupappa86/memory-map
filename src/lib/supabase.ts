@@ -138,10 +138,12 @@ export async function fetchMapEpisodes(isAdmin: boolean): Promise<EpisodePublic[
         .select(query as '*')
         .order('created_at', { ascending: false });
       if (!error && data) {
-        return (data as unknown as Record<string, unknown>[]).map(normalizeEpisodeRow);
+        const rows = (data as unknown as Record<string, unknown>[]).map(normalizeEpisodeRow);
+        console.log('[episodes] select 成功:', query, '件数:', rows.length);
+        return rows;
       }
       if (error) {
-        console.warn('[episodes] select 失敗、次のカラムセットを試します:', error.message);
+        console.warn('[episodes] select 失敗、次のカラムセットを試します:', query, error.message);
       }
     }
   }
